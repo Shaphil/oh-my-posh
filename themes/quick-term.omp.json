@@ -31,6 +31,14 @@
           "type": "os"
         },
         {
+          "type": "python",
+          "style": "powerline",
+          "powerline_symbol": "",
+          "foreground": "#100e23",
+          "background": "#906cff",
+          "template": "  {{ .Full }} "
+        },
+        {
           "background": "#e4e4e4",
           "foreground": "#4e4e4e",
           "style": "powerline",
