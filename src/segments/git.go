@@ -113,6 +113,8 @@ const (
 	DETACHED     = "(detached)"
 	BRANCHPREFIX = "ref: refs/heads/"
 	GITCOMMAND   = "git"
+
+	trueStr = "true"
 )
 
 type Git struct {
@@ -278,7 +280,7 @@ func (g *Git) shouldDisplay() bool {
 		}
 		g.realDir = g.env.Pwd()
 		bare := g.getGitCommandOutput("rev-parse", "--is-bare-repository")
-		if bare == "true" {
+		if bare == trueStr {
 			g.IsBare = true
 			g.workingDir = g.realDir
 			return true
@@ -831,4 +833,8 @@ func (g *Git) getSwitchMode(property properties.Property, gitSwitch, mode string
 		return ""
 	}
 	return fmt.Sprintf("%s%s", gitSwitch, mode)
+}
+
+func (g *Git) LatestTag() string {
+	return g.getGitCommandOutput("describe", "--tags", "--abbrev=0")
 }
