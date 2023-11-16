@@ -5,9 +5,35 @@
       "alignment": "left",
       "segments": [
         {
+          "background": "#9130ff",
+          "foreground": "#f2f3f8",
+          "properties": {
+            "alpine": "\uf300",
+            "arch": "\uf303",
+            "centos": "\uf304",
+            "debian": "\uf306",
+            "elementary": "\uf309",
+            "fedora": "\uf30a",
+            "gentoo": "\uf30d",
+            "linux": "\ue712",
+            "macos": "\ue711",
+            "manjaro": "\uf312",
+            "mint": "\uf30f",
+            "opensuse": "\uf314",
+            "raspbian": "\uf315",
+            "ubuntu": "\uf31c",
+            "windows": "\ue70f"
+          },
+          "style": "diamond",
+          "leading_diamond": "\ue0b6",
+          "trailing_diamond": "\ue0b0",
+          "template": " {{ .Icon }} ",
+          "type": "os"
+        },
+        {
           "background": "#c386f1",
           "foreground": "#ffffff",
-          "leading_diamond": "\ue0b6",
+          "powerline_symbol": "\ue0b0",
           "style": "diamond",
           "template": " {{ .UserName }} ",
           "trailing_diamond": "\ue0b0",
