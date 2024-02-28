@@ -186,6 +186,8 @@ const (
 	NPM SegmentType = "npm"
 	// NX writes which Nx version us currently active
 	NX SegmentType = "nx"
+	// OCAML writes the active Ocaml version
+	OCAML SegmentType = "ocaml"
 	// OS write os specific icon
 	OS SegmentType = "os"
 	// OWM writes the weather coming from openweatherdata
@@ -206,6 +208,8 @@ const (
 	QUASAR SegmentType = "quasar"
 	// R version
 	R SegmentType = "r"
+	// REACT writes the current react version
+	REACT SegmentType = "react"
 	// ROOT writes root symbol
 	ROOT SegmentType = "root"
 	// RUBY writes which ruby version is currently active
@@ -310,6 +314,7 @@ var Segments = map[SegmentType]func() SegmentWriter{
 	NODE:            func() SegmentWriter { return &segments.Node{} },
 	NPM:             func() SegmentWriter { return &segments.Npm{} },
 	NX:              func() SegmentWriter { return &segments.Nx{} },
+	OCAML:           func() SegmentWriter { return &segments.OCaml{} },
 	OS:              func() SegmentWriter { return &segments.Os{} },
 	OWM:             func() SegmentWriter { return &segments.Owm{} },
 	PATH:            func() SegmentWriter { return &segments.Path{} },
@@ -320,6 +325,7 @@ var Segments = map[SegmentType]func() SegmentWriter{
 	PYTHON:          func() SegmentWriter { return &segments.Python{} },
 	QUASAR:          func() SegmentWriter { return &segments.Quasar{} },
 	R:               func() SegmentWriter { return &segments.R{} },
+	REACT:           func() SegmentWriter { return &segments.React{} },
 	ROOT:            func() SegmentWriter { return &segments.Root{} },
 	RUBY:            func() SegmentWriter { return &segments.Ruby{} },
 	RUST:            func() SegmentWriter { return &segments.Rust{} },
@@ -368,6 +374,11 @@ func (segment *Segment) shouldIncludeFolder() bool {
 func (segment *Segment) isPowerline() bool {
 	style := segment.style()
 	return style == Powerline || style == Accordion
+}
+
+func (segment *Segment) hasTrailingDiamond() bool {
+	style := segment.style()
+	return style == Diamond && len(segment.TrailingDiamond) > 0
 }
 
 func (segment *Segment) cwdIncluded() bool {

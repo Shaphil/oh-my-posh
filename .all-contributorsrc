@@ -2233,6 +2233,53 @@
       "contributions": [
         "doc"
       ]
+    },
+    {
+      "login": "srpmtt",
+      "name": "srpmtt",
+      "avatar_url": "https://avatars.githubusercontent.com/u/11175503?v=4",
+      "profile": "https://github.com/srpmtt",
+      "contributions": [
+        "code",
+        "design",
+        "doc"
+      ]
+    },
+    {
+      "login": "Chris-Johnston",
+      "name": "Chris Johnston",
+      "avatar_url": "https://avatars.githubusercontent.com/u/16418643?v=4",
+      "profile": "https://chris-johnston.me",
+      "contributions": [
+        "doc"
+      ]
+    },
+    {
+      "login": "Daimonion1980",
+      "name": "Thomas",
+      "avatar_url": "https://avatars.githubusercontent.com/u/12880413?v=4",
+      "profile": "https://github.com/Daimonion1980",
+      "contributions": [
+        "design"
+      ]
+    },
+    {
+      "login": "VEERT00X",
+      "name": "Veko",
+      "avatar_url": "https://avatars.githubusercontent.com/u/72668825?v=4",
+      "profile": "https://veert00x.com",
+      "contributions": [
+        "doc"
+      ]
+    },
+    {
+      "login": "lucascosti",
+      "name": "Lucas Costi",
+      "avatar_url": "https://avatars.githubusercontent.com/u/4434330?v=4",
+      "profile": "https://lucascosti.com",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "contributorsPerLine": 7,

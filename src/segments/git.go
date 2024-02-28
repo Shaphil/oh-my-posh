@@ -167,7 +167,7 @@ func (g *Git) Enabled() bool {
 		g.setUser()
 	}
 
-	g.RepoName = platform.Base(g.env, g.convertToLinuxPath(g.realDir))
+	g.RepoName = g.repoName()
 
 	g.Working = &GitStatus{}
 	g.Staging = &GitStatus{}
@@ -268,6 +268,10 @@ func (g *Git) Kraken() string {
 	return fmt.Sprintf("gitkraken://repolink/%s/commit/%s?url=%s", root, g.Hash, url2.QueryEscape(g.RawUpstreamURL))
 }
 
+func (g *Git) LatestTag() string {
+	return g.getGitCommandOutput("describe", "--tags", "--abbrev=0")
+}
+
 func (g *Git) shouldDisplay() bool {
 	if !g.hasCommand(GITCOMMAND) {
 		return false
@@ -295,7 +299,12 @@ func (g *Git) shouldDisplay() bool {
 	g.setDir(gitdir.Path)
 
 	if !gitdir.IsDir {
-		return g.hasWorktree(gitdir)
+		if g.hasWorktree(gitdir) {
+			g.realDir = g.convertToWindowsPath(g.realDir)
+			return true
+		}
+
+		return false
 	}
 
 	g.workingDir = gitdir.Path
@@ -845,6 +854,15 @@ func (g *Git) getSwitchMode(property properties.Property, gitSwitch, mode string
 	return fmt.Sprintf("%s%s", gitSwitch, mode)
 }
 
-func (g *Git) LatestTag() string {
-	return g.getGitCommandOutput("describe", "--tags", "--abbrev=0")
+func (g *Git) repoName() string {
+	if !g.IsWorkTree {
+		return platform.Base(g.env, g.convertToLinuxPath(g.realDir))
+	}
+
+	ind := strings.LastIndex(g.workingDir, ".git/worktrees")
+	if ind > -1 {
+		return platform.Base(g.env, g.workingDir[:ind])
+	}
+
+	return ""
 }
