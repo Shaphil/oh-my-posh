@@ -36,8 +36,8 @@ type style struct {
 }
 
 type Colors struct {
-	Background string `json:"background"`
-	Foreground string `json:"foreground"`
+	Background string `json:"background" toml:"background"`
+	Foreground string `json:"foreground" toml:"foreground"`
 }
 
 const (
@@ -428,7 +428,7 @@ func (w *Writer) writeSegmentColors() {
 		return
 	}
 
-	if fg.IsTransparent() && len(w.TerminalBackground) != 0 {
+	if fg.IsTransparent() && len(w.TerminalBackground) != 0 { //nolint: gocritic
 		background := w.getAnsiFromColorString(w.TerminalBackground, false)
 		w.writeEscapedAnsiString(fmt.Sprintf(colorise, background))
 		w.writeEscapedAnsiString(fmt.Sprintf(colorise, bg.ToForeground()))
