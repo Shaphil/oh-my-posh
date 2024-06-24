@@ -200,6 +200,7 @@ type Shell struct {
 	Var      SimpleMap
 
 	cwd       string
+	host      string
 	cmdCache  *commandCache
 	fileCache *fileCache
 	tmplCache *TemplateCache
@@ -496,13 +497,20 @@ func (env *Shell) User() string {
 
 func (env *Shell) Host() (string, error) {
 	defer env.Trace(time.Now())
+	if len(env.host) != 0 {
+		return env.host, nil
+	}
+
 	hostName, err := os.Hostname()
 	if err != nil {
 		env.Error(err)
 		return "", err
 	}
+
 	hostName = cleanHostName(hostName)
 	env.Debug(hostName)
+	env.host = hostName
+
 	return hostName, nil
 }
 
@@ -782,6 +790,12 @@ func (env *Shell) TemplateCache() *TemplateCache {
 
 	pwd := env.Pwd()
 	tmplCache.PWD = ReplaceHomeDirPrefixWithTilde(env, pwd)
+
+	tmplCache.AbsolutePWD = pwd
+	if env.IsWsl() {
+		tmplCache.AbsolutePWD, _ = env.RunCommand("wslpath", "-m", pwd)
+	}
+
 	tmplCache.Folder = Base(env, pwd)
 	if env.GOOS() == WINDOWS && strings.HasSuffix(tmplCache.Folder, ":") {
 		tmplCache.Folder += `\`

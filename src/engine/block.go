@@ -45,6 +45,9 @@ type Block struct {
 	Filler    string         `json:"filler,omitempty" toml:"filler,omitempty"`
 	Overflow  Overflow       `json:"overflow,omitempty" toml:"overflow,omitempty"`
 
+	LeadingDiamond  string `json:"leading_diamond,omitempty" toml:"leading_diamond,omitempty"`
+	TrailingDiamond string `json:"trailing_diamond,omitempty" toml:"trailing_diamond,omitempty"`
+
 	// Deprecated: keep the logic for legacy purposes
 	HorizontalOffset int `json:"horizontal_offset,omitempty" toml:"horizontal_offset,omitempty"`
 	VerticalOffset   int `json:"vertical_offset,omitempty" toml:"vertical_offset,omitempty"`
@@ -70,6 +73,7 @@ func (b *Block) InitPlain(env platform.Environment, config *Config) {
 		AnsiColors:         config.MakeColors(),
 		TrueColor:          env.Flags().TrueColor,
 	}
+
 	b.writer.Init(shell.GENERIC)
 	b.env = env
 	b.executeSegmentLogic()
@@ -79,12 +83,14 @@ func (b *Block) executeSegmentLogic() {
 	if shouldHideForWidth(b.env, b.MinWidth, b.MaxWidth) {
 		return
 	}
+
 	b.setEnabledSegments()
 	b.setSegmentsText()
 }
 
 func (b *Block) setActiveSegment(segment *Segment) {
 	b.activeSegment = segment
+	b.writer.Interactive = segment.Interactive
 	b.writer.SetColors(segment.background(), segment.foreground())
 }
 
@@ -92,11 +98,13 @@ func (b *Block) Enabled() bool {
 	if b.Type == LineBreak {
 		return true
 	}
+
 	for _, segment := range b.Segments {
 		if segment.Enabled {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -104,6 +112,7 @@ func (b *Block) setEnabledSegments() {
 	wg := sync.WaitGroup{}
 	wg.Add(len(b.Segments))
 	defer wg.Wait()
+
 	for _, segment := range b.Segments {
 		go func(s *Segment) {
 			defer wg.Done()
@@ -125,14 +134,20 @@ func (b *Block) setSegmentsText() {
 }
 
 func (b *Block) RenderSegments() (string, int) {
-	for _, segment := range b.Segments {
-		if !segment.Enabled && segment.style() != Accordion {
-			continue
-		}
+	b.filterSegments()
 
+	for i, segment := range b.Segments {
 		if colors, newCycle := cycle.Loop(); colors != nil {
 			cycle = &newCycle
 			segment.colors = colors
+		}
+
+		if i == 0 && len(b.LeadingDiamond) > 0 {
+			segment.LeadingDiamond = b.LeadingDiamond
+		}
+
+		if i == len(b.Segments)-1 && len(b.TrailingDiamond) > 0 {
+			segment.TrailingDiamond = b.TrailingDiamond
 		}
 
 		b.setActiveSegment(segment)
@@ -142,6 +157,20 @@ func (b *Block) RenderSegments() (string, int) {
 	b.writeSeparator(true)
 
 	return b.writer.String()
+}
+
+func (b *Block) filterSegments() {
+	segments := make([]*Segment, 0)
+
+	for _, segment := range b.Segments {
+		if !segment.Enabled && segment.style() != Accordion {
+			continue
+		}
+
+		segments = append(segments, segment)
+	}
+
+	b.Segments = segments
 }
 
 func (b *Block) renderActiveSegment() {
@@ -176,38 +205,70 @@ func (b *Block) writeSeparator(final bool) {
 	if isPreviousDiamond {
 		b.adjustTrailingDiamondColorOverrides()
 	}
+
 	if isPreviousDiamond && isCurrentDiamond && len(b.activeSegment.LeadingDiamond) == 0 {
 		b.writer.Write(ansi.Background, ansi.ParentBackground, b.previousActiveSegment.TrailingDiamond)
 		return
 	}
+
 	if isPreviousDiamond && len(b.previousActiveSegment.TrailingDiamond) > 0 {
 		b.writer.Write(ansi.Transparent, ansi.ParentBackground, b.previousActiveSegment.TrailingDiamond)
 	}
 
-	resolvePowerlineSymbol := func() string {
-		var symbol string
-		if b.activeSegment.isPowerline() {
-			symbol = b.activeSegment.PowerlineSymbol
-		} else if b.previousActiveSegment != nil && b.previousActiveSegment.isPowerline() {
-			symbol = b.previousActiveSegment.PowerlineSymbol
+	isPowerline := b.activeSegment.isPowerline()
+
+	shouldOverridePowerlineLeadingSymbol := func() bool {
+		if !isPowerline {
+			return false
 		}
-		return symbol
+
+		if isPowerline && len(b.activeSegment.LeadingPowerlineSymbol) == 0 {
+			return false
+		}
+
+		if b.previousActiveSegment != nil && b.previousActiveSegment.isPowerline() {
+			return false
+		}
+
+		return true
 	}
+
+	if shouldOverridePowerlineLeadingSymbol() {
+		b.writer.Write(ansi.Transparent, ansi.Background, b.activeSegment.LeadingPowerlineSymbol)
+		return
+	}
+
+	resolvePowerlineSymbol := func() string {
+		if isPowerline {
+			return b.activeSegment.PowerlineSymbol
+		}
+
+		if b.previousActiveSegment != nil && b.previousActiveSegment.isPowerline() {
+			return b.previousActiveSegment.PowerlineSymbol
+		}
+
+		return ""
+	}
+
 	symbol := resolvePowerlineSymbol()
 	if len(symbol) == 0 {
 		return
 	}
+
 	bgColor := ansi.Background
-	if final || !b.activeSegment.isPowerline() {
+	if final || !isPowerline {
 		bgColor = ansi.Transparent
 	}
+
 	if b.activeSegment.style() == Diamond && len(b.activeSegment.LeadingDiamond) == 0 {
 		bgColor = ansi.Background
 	}
+
 	if b.activeSegment.InvertPowerline {
 		b.writer.Write(b.getPowerlineColor(), bgColor, symbol)
 		return
 	}
+
 	b.writer.Write(bgColor, b.getPowerlineColor(), symbol)
 }
 

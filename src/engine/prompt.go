@@ -68,6 +68,11 @@ func (e *Engine) Primary() string {
 		e.currentLineLength++
 	}
 
+	if e.Config.ITermFeatures != nil && e.isIterm() {
+		host, _ := e.Env.Host()
+		e.write(e.Writer.RenderItermFeatures(e.Config.ITermFeatures, e.Env.Shell(), e.Env.Pwd(), e.Env.User(), host))
+	}
+
 	if e.Config.ShellIntegration && e.Config.TransientPrompt == nil {
 		e.write(e.Writer.CommandStart())
 	}
@@ -155,6 +160,7 @@ func (e *Engine) ExtraPrompt(promptType ExtraPromptType) string {
 		Template: getTemplate(prompt.Template),
 		Env:      e.Env,
 	}
+
 	promptText, err := tmpl.Render()
 	if err != nil {
 		promptText = err.Error()

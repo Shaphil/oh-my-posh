@@ -10,9 +10,6 @@
       // Use -bullseye variants on local arm64/Apple Silicon.
       "VARIANT": "1-1.22-bullseye",
 
-      // Options:
-      "POSH_THEME": "/workspaces/oh-my-posh/themes/jandedobbeleer.omp.json",
-
       // Override me with your own timezone:
       "TZ": "UTC",
       // Use one of the "TZ database name" entries from:
@@ -54,6 +51,7 @@
         "terminal.integrated.defaultProfile.linux": "pwsh",
         "terminal.integrated.defaultProfile.windows": "pwsh",
         "terminal.integrated.defaultProfile.osx": "pwsh",
+        "terminal.integrated.shellIntegration.enabled": false,
         "tasks.statusbar.default.hide": true
       },
       "extensions": [

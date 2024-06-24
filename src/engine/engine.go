@@ -92,16 +92,12 @@ func (e *Engine) pwd() {
 
 	cwd := e.Env.Pwd()
 
-	// in BASH, we need to escape the path
-	if e.Env.Shell() == shell.BASH {
-		cwd = strings.ReplaceAll(cwd, `\`, `\\`)
-	}
-
 	// Backwards compatibility for deprecated OSC99
 	if e.Config.OSC99 {
 		e.write(e.Writer.ConsolePwd(ansi.OSC99, "", "", cwd))
 		return
 	}
+
 	// Allow template logic to define when to enable the PWD (when supported)
 	tmpl := &template.Text{
 		Template: e.Config.PWD,
@@ -119,17 +115,33 @@ func (e *Engine) pwd() {
 }
 
 func (e *Engine) newline() {
+	defer func() {
+		e.currentLineLength = 0
+	}()
+
 	// WARP terminal will remove \n from the prompt, so we hack a newline in
 	if e.isWarp() {
 		e.write(e.Writer.LineBreak())
-	} else {
-		e.write("\n")
+		return
 	}
-	e.currentLineLength = 0
+
+	// TCSH needs a space before the LITERAL newline character or it will not render correctly
+	// don't ask why, it be like that sometimes.
+	// https://unix.stackexchange.com/questions/99101/properly-defining-a-multi-line-prompt-in-tcsh#comment1342462_322189
+	if e.Env.Shell() == shell.TCSH {
+		e.write(` \n`)
+		return
+	}
+
+	e.write("\n")
 }
 
 func (e *Engine) isWarp() bool {
 	return e.Env.Getenv("TERM_PROGRAM") == "WarpTerminal"
+}
+
+func (e *Engine) isIterm() bool {
+	return e.Env.Getenv("TERM_PROGRAM") == "iTerm.app"
 }
 
 func (e *Engine) shouldFill(filler string, remaining, blockLength int) (string, bool) {
@@ -220,14 +232,6 @@ func (e *Engine) renderBlock(block *Block, cancelNewline bool) bool {
 
 		if block.Alignment != Right {
 			return false
-		}
-
-		// in ZSH, RPROMPT is printed with a trailing space
-		// to ensure alignment, we need to print a space here
-		// see https://github.com/JanDeDobbeleer/oh-my-posh/issues/4327
-		if e.Env.Shell() == shell.ZSH {
-			text += " "
-			length++
 		}
 
 		space, OK := e.canWriteRightBlock(false)
