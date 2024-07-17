@@ -3,14 +3,20 @@ export POSH_SHELL_VERSION=$BASH_VERSION
 export POWERLINE_COMMAND="oh-my-posh"
 export POSH_PID=$$
 export CONDA_PROMPT_MODIFIER=false
-omp_start_time=""
+
+_omp_start_time=""
+_omp_stack_count=0
+_omp_elapsed=-1
+_omp_no_exit_code="true"
+_omp_status_cache=0
+_omp_pipestatus_cache=0
 
 # start timer on command start
-PS0='${omp_start_time:0:$((omp_start_time="$(_omp_start_timer)",0))}$(_omp_ftcs_command_start)'
+PS0='${_omp_start_time:0:$((_omp_start_time="$(_omp_start_timer)",0))}$(_omp_ftcs_command_start)'
 # set secondary prompt
 PS2="$(::OMP:: print secondary --config="$POSH_THEME" --shell=bash --shell-version="$BASH_VERSION")"
 
-function _set_posh_cursor_position() {
+function _omp_set_cursor_position() {
     # not supported in Midnight Commander
     # see https://github.com/JanDeDobbeleer/oh-my-posh/issues/3415
     if [[ "::CURSOR::" != "true" ]] || [[ -v MC_SID ]]; then
@@ -45,35 +51,41 @@ function set_poshcontext() {
     return
 }
 
+# regular prompt
 function _omp_hook() {
-    local ret=$? pipeStatus=(${PIPESTATUS[@]})
-    if [[ "${#BP_PIPESTATUS[@]}" -ge "${#pipeStatus[@]}" ]]; then
-        pipeStatus=(${BP_PIPESTATUS[@]})
+    _omp_status_cache=$? _omp_pipestatus_cache=(${PIPESTATUS[@]})
+
+    if [[ "${#BP_PIPESTATUS[@]}" -ge "${#_omp_pipestatus_cache[@]}" ]]; then
+        _omp_pipestatus_cache=(${BP_PIPESTATUS[@]})
     fi
 
-    local omp_stack_count=$((${#DIRSTACK[@]} - 1))
-    local omp_elapsed=-1
-    local no_exit_code="true"
+    _omp_stack_count=$((${#DIRSTACK[@]} - 1))
 
-    if [[ "$omp_start_time" ]]; then
+    if [[ "$_omp_start_time" ]]; then
         local omp_now=$(::OMP:: get millis --shell=bash)
-        omp_elapsed=$((omp_now - omp_start_time))
-        omp_start_time=""
-        no_exit_code="false"
+        _omp_elapsed=$((omp_now - _omp_start_time))
+        _omp_start_time=""
+        _omp_no_exit_code="false"
     fi
-    if [[ "${pipeStatus[-1]}" != "$ret" ]]; then
-        pipeStatus=("$ret")
+
+    if [[ "${_omp_pipestatus_cache[-1]}" != "$_omp_status_cache" ]]; then
+        _omp_pipestatus_cache=("$_omp_status_cache")
     fi
 
     set_poshcontext
-    _set_posh_cursor_position
+    _omp_set_cursor_position
 
-    PS1="$(::OMP:: print primary --config="$POSH_THEME" --shell=bash --shell-version="$BASH_VERSION" --status="$ret" --pipestatus="${pipeStatus[*]}" --execution-time="$omp_elapsed" --stack-count="$omp_stack_count" --no-status="$no_exit_code" --terminal-width="${COLUMNS-0}" | tr -d '\0')"
-    return $ret
+    PS1="$(::OMP:: print primary --config="$POSH_THEME" --shell=bash --shell-version="$BASH_VERSION" --status="$_omp_status_cache" --pipestatus="${_omp_pipestatus_cache[*]}" --execution-time="$_omp_elapsed" --stack-count="$_omp_stack_count" --no-status="$_omp_no_exit_code" --terminal-width="${COLUMNS-0}" | tr -d '\0')"
+}
+
+# rprompt
+function _omp_rprompt() {
+    ::OMP:: print right --config="$POSH_THEME" --shell=bash --shell-version="$BASH_VERSION" --status="$_omp_status_cache" --pipestatus="${_omp_pipestatus_cache[*]}" --execution-time="$_omp_elapsed" --stack-count="$_omp_stack_count" --no-status="$_omp_no_exit_code" --terminal-width="${COLUMNS-0}" | tr -d '\0'
+    return $_omp_status_cache
 }
 
 if [[ "$TERM" != "linux" ]] && [[ -x "$(command -v ::OMP::)" ]] && ! [[ "$PROMPT_COMMAND" =~ "_omp_hook" ]]; then
-    PROMPT_COMMAND="_omp_hook; $PROMPT_COMMAND"
+    PROMPT_COMMAND="_omp_hook; _omp_rprompt; $PROMPT_COMMAND"
 fi
 
 if [[ "::UPGRADE::" == "true" ]]; then
