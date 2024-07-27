@@ -9,17 +9,42 @@ import (
 	"github.com/jandedobbeleer/oh-my-posh/src/terminal"
 )
 
-type ExtraPromptType int
-
-const (
-	Transient ExtraPromptType = iota
-	Valid
-	Error
-	Secondary
-	Debug
-)
-
 func (e *Engine) Primary() string {
+	needsPrimaryRightPrompt := e.needsPrimaryRightPrompt()
+
+	e.writePrimaryPrompt(needsPrimaryRightPrompt)
+
+	switch e.Env.Shell() {
+	case shell.ZSH:
+		if !e.Env.Flags().Eval {
+			break
+		}
+
+		// Warp doesn't support RPROMPT so we need to write it manually
+		if e.isWarp() {
+			e.writePrimaryRightPrompt()
+			// escape double quotes contained in the prompt
+			prompt := fmt.Sprintf("PS1=\"%s\"", strings.ReplaceAll(e.string(), `"`, `\"`))
+			return prompt
+		}
+
+		// escape double quotes contained in the prompt
+		prompt := fmt.Sprintf("PS1=\"%s\"", strings.ReplaceAll(e.string(), `"`, `\"`))
+		prompt += fmt.Sprintf("\nRPROMPT=\"%s\"", e.rprompt)
+
+		return prompt
+	default:
+		if !needsPrimaryRightPrompt {
+			break
+		}
+
+		e.writePrimaryRightPrompt()
+	}
+
+	return e.string()
+}
+
+func (e *Engine) writePrimaryPrompt(needsPrimaryRPrompt bool) {
 	if e.Config.ShellIntegration {
 		exitCode, _ := e.Env.StatusCodes()
 		e.write(terminal.CommandFinished(exitCode, e.Env.Flags().NoExitCode))
@@ -29,8 +54,6 @@ func (e *Engine) Primary() string {
 	// cache a pointer to the color cycle
 	cycle = &e.Config.Cycle
 	var cancelNewline, didRender bool
-
-	needsPrimaryRPrompt := e.needsPrimaryRPrompt()
 
 	for i, block := range e.Config.Blocks {
 		// do not print a leading newline when we're at the first row and the prompt is cleared
@@ -73,38 +96,9 @@ func (e *Engine) Primary() string {
 	}
 
 	e.pwd()
-
-	switch e.Env.Shell() {
-	case shell.ZSH:
-		if !e.Env.Flags().Eval {
-			break
-		}
-
-		// Warp doesn't support RPROMPT so we need to write it manually
-		if e.isWarp() {
-			e.writePrimaryRPrompt()
-			// escape double quotes contained in the prompt
-			prompt := fmt.Sprintf("PS1=\"%s\"", strings.ReplaceAll(e.string(), `"`, `\"`))
-			return prompt
-		}
-
-		// escape double quotes contained in the prompt
-		prompt := fmt.Sprintf("PS1=\"%s\"", strings.ReplaceAll(e.string(), `"`, `\"`))
-		prompt += fmt.Sprintf("\nRPROMPT=\"%s\"", e.rprompt)
-
-		return prompt
-	default:
-		if !needsPrimaryRPrompt {
-			break
-		}
-
-		e.writePrimaryRPrompt()
-	}
-
-	return e.string()
 }
 
-func (e *Engine) needsPrimaryRPrompt() bool {
+func (e *Engine) needsPrimaryRightPrompt() bool {
 	switch e.Env.Shell() {
 	case shell.PWSH, shell.PWSH5, shell.GENERIC, shell.ZSH:
 		return true
@@ -113,7 +107,7 @@ func (e *Engine) needsPrimaryRPrompt() bool {
 	}
 }
 
-func (e *Engine) writePrimaryRPrompt() {
+func (e *Engine) writePrimaryRightPrompt() {
 	space, OK := e.canWriteRightBlock(e.rpromptLength, true)
 	if !OK {
 		return
