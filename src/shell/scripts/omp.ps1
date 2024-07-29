@@ -113,7 +113,7 @@ New-Module -Name "oh-my-posh-core" -ScriptBlock {
         $stdoutTask.Result
     }
 
-    function Set-PoshContext {}
+    function Set-PoshContext([bool]$originalStatus) {}
 
     function Get-CleanPSWD {
         $pswd = $PWD.ToString()
@@ -387,8 +387,6 @@ Example:
             }
             catch {}
         }
-
-        Set-PoshContext
     }
 
     function Update-PoshErrorCode {
@@ -445,6 +443,8 @@ Example:
         if ($script:PromptType -ne 'transient') {
             Update-PoshErrorCode
         }
+
+        Set-PoshContext $script:ErrorCode
 
         $cleanPSWD = Get-CleanPSWD
         $stackCount = global:Get-PoshStackCount
