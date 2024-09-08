@@ -21,7 +21,6 @@ import (
 	"github.com/jandedobbeleer/oh-my-posh/src/log"
 	"github.com/jandedobbeleer/oh-my-posh/src/maps"
 	"github.com/jandedobbeleer/oh-my-posh/src/regex"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime/battery"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/cmd"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/config"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/http"
@@ -30,173 +29,6 @@ import (
 	load "github.com/shirou/gopsutil/v3/load"
 	process "github.com/shirou/gopsutil/v3/process"
 )
-
-const (
-	UNKNOWN = "unknown"
-	WINDOWS = "windows"
-	DARWIN  = "darwin"
-	LINUX   = "linux"
-	CMD     = "cmd"
-)
-
-type Flags struct {
-	ErrorCode     int
-	PipeStatus    string
-	Config        string
-	Shell         string
-	ShellVersion  string
-	PWD           string
-	PSWD          string
-	ExecutionTime float64
-	Eval          bool
-	StackCount    int
-	Migrate       bool
-	TerminalWidth int
-	Strict        bool
-	Debug         bool
-	Manual        bool
-	Plain         bool
-	Primary       bool
-	HasTransient  bool
-	PromptCount   int
-	Cleared       bool
-	Cached        bool
-	NoExitCode    bool
-	Column        int
-	JobCount      int
-}
-
-type CommandError struct {
-	Err      string
-	ExitCode int
-}
-
-func (e *CommandError) Error() string {
-	return e.Err
-}
-
-type FileInfo struct {
-	ParentFolder string
-	Path         string
-	IsDir        bool
-}
-
-type WindowsRegistryValueType string
-
-const (
-	DWORD  = "DWORD"
-	QWORD  = "QWORD"
-	BINARY = "BINARY"
-	STRING = "STRING"
-)
-
-type WindowsRegistryValue struct {
-	ValueType WindowsRegistryValueType
-	DWord     uint64
-	QWord     uint64
-	String    string
-}
-
-type NotImplemented struct{}
-
-func (n *NotImplemented) Error() string {
-	return "not implemented"
-}
-
-type ConnectionType string
-
-const (
-	ETHERNET  ConnectionType = "ethernet"
-	WIFI      ConnectionType = "wifi"
-	CELLULAR  ConnectionType = "cellular"
-	BLUETOOTH ConnectionType = "bluetooth"
-)
-
-type Connection struct {
-	Name         string
-	Type         ConnectionType
-	TransmitRate uint64
-	ReceiveRate  uint64
-	SSID         string // Wi-Fi only
-}
-
-type Memory struct {
-	PhysicalTotalMemory     uint64
-	PhysicalAvailableMemory uint64
-	PhysicalFreeMemory      uint64
-	PhysicalPercentUsed     float64
-	SwapTotalMemory         uint64
-	SwapFreeMemory          uint64
-	SwapPercentUsed         float64
-}
-
-type SystemInfo struct {
-	// mem
-	Memory
-	// load
-	Load1  float64
-	Load5  float64
-	Load15 float64
-	// disk
-	Disks map[string]disk.IOCountersStat
-}
-
-type Environment interface {
-	Getenv(key string) string
-	Pwd() string
-	Home() string
-	User() string
-	Root() bool
-	Host() (string, error)
-	GOOS() string
-	Shell() string
-	Platform() string
-	StatusCodes() (int, string)
-	PathSeparator() string
-	HasFiles(pattern string) bool
-	HasFilesInDir(dir, pattern string) bool
-	HasFolder(folder string) bool
-	HasParentFilePath(path string, followSymlinks bool) (fileInfo *FileInfo, err error)
-	HasFileInParentDirs(pattern string, depth uint) bool
-	ResolveSymlink(path string) (string, error)
-	DirMatchesOneOf(dir string, regexes []string) bool
-	DirIsWritable(path string) bool
-	CommandPath(command string) string
-	HasCommand(command string) bool
-	FileContent(file string) string
-	LsDir(path string) []fs.DirEntry
-	RunCommand(command string, args ...string) (string, error)
-	RunShellCommand(shell, command string) string
-	ExecutionTime() float64
-	Flags() *Flags
-	BatteryState() (*battery.Info, error)
-	QueryWindowTitles(processName, windowTitleRegex string) (string, error)
-	WindowsRegistryKeyValue(path string) (*WindowsRegistryValue, error)
-	HTTPRequest(url string, body io.Reader, timeout int, requestModifiers ...http.RequestModifier) ([]byte, error)
-	IsWsl() bool
-	IsWsl2() bool
-	IsCygwin() bool
-	StackCount() int
-	TerminalWidth() (int, error)
-	CachePath() string
-	Cache() cache.Cache
-	Session() cache.Cache
-	Close()
-	Logs() string
-	InWSLSharedDrive() bool
-	ConvertToLinuxPath(path string) string
-	ConvertToWindowsPath(path string) string
-	Connection(connectionType ConnectionType) (*Connection, error)
-	TemplateCache() *cache.Template
-	LoadTemplateCache()
-	SetPromptCount()
-	CursorPosition() (row, col int)
-	SystemInfo() (*SystemInfo, error)
-	Debug(message string)
-	DebugF(format string, a ...any)
-	Error(err error)
-	Trace(start time.Time, args ...string)
-}
 
 type Terminal struct {
 	CmdFlags *Flags
@@ -230,7 +62,7 @@ func (term *Terminal) Init() {
 
 	if term.CmdFlags.Plain {
 		log.Plain()
-		log.Debug("dlain mode enabled")
+		log.Debug("plain mode enabled")
 	}
 
 	initCache := func(fileName string) *cache.File {
@@ -242,22 +74,26 @@ func (term *Terminal) Init() {
 	term.deviceCache = initCache(cache.FileName)
 	term.sessionCache = initCache(cache.SessionFileName)
 
-	term.resolveConfigPath()
+	term.ResolveConfigPath()
+
 	term.cmdCache = &cache.Command{
 		Commands: maps.NewConcurrent(),
 	}
 
 	term.tmplCache = &cache.Template{}
 
-	if !term.CmdFlags.Cached {
-		term.SetPromptCount()
-	}
+	term.SetPromptCount()
 }
 
-func (term *Terminal) resolveConfigPath() {
+func (term *Terminal) ResolveConfigPath() {
 	defer term.Trace(time.Now())
 
-	if poshTheme := term.Getenv("POSH_THEME"); len(poshTheme) > 0 {
+	// if the config flag is set, we'll use that over POSH_THEME
+	// in our internal shell logic, we'll always use the POSH_THEME
+	// due to not using --config to set the configuration
+	hasConfigFlag := len(term.CmdFlags.Config) > 0
+
+	if poshTheme := term.Getenv("POSH_THEME"); len(poshTheme) > 0 && !hasConfigFlag {
 		term.DebugF("config set using POSH_THEME: %s", poshTheme)
 		term.CmdFlags.Config = poshTheme
 		return
@@ -291,11 +127,7 @@ func (term *Terminal) resolveConfigPath() {
 		return
 	}
 
-	configFile := term.CmdFlags.Config
-	if strings.HasPrefix(configFile, "~") {
-		configFile = strings.TrimPrefix(configFile, "~")
-		configFile = filepath.Join(term.Home(), configFile)
-	}
+	configFile := ReplaceTildePrefixWithHomeDir(term, term.CmdFlags.Config)
 
 	abs, err := filepath.Abs(configFile)
 	if err != nil {
@@ -341,25 +173,20 @@ func (term *Terminal) Pwd() string {
 	if term.cwd != "" {
 		return term.cwd
 	}
-	correctPath := func(pwd string) string {
-		if term.GOOS() != WINDOWS {
-			return pwd
-		}
-		// on Windows, and being case sensitive and not consistent and all, this gives silly issues
-		driveLetter := regex.GetCompiledRegex(`^[a-z]:`)
-		return driveLetter.ReplaceAllStringFunc(pwd, strings.ToUpper)
-	}
+
 	if term.CmdFlags != nil && term.CmdFlags.PWD != "" {
-		term.cwd = correctPath(term.CmdFlags.PWD)
+		term.cwd = CleanPath(term, term.CmdFlags.PWD)
 		term.Debug(term.cwd)
 		return term.cwd
 	}
+
 	dir, err := os.Getwd()
 	if err != nil {
 		term.Error(err)
 		return ""
 	}
-	term.cwd = correctPath(dir)
+
+	term.cwd = CleanPath(term, dir)
 	term.Debug(term.cwd)
 	return term.cwd
 }
@@ -489,7 +316,10 @@ func (term *Terminal) LsDir(path string) []fs.DirEntry {
 
 func (term *Terminal) PathSeparator() string {
 	defer term.Trace(time.Now())
-	return string(os.PathSeparator)
+	if term.GOOS() == WINDOWS {
+		return `\`
+	}
+	return "/"
 }
 
 func (term *Terminal) User() string {
@@ -836,6 +666,8 @@ func (term *Terminal) TemplateCache() *cache.Template {
 		tmplCache.AbsolutePWD, _ = term.RunCommand("wslpath", "-m", pwd)
 	}
 
+	tmplCache.PSWD = term.CmdFlags.PSWD
+
 	tmplCache.Folder = Base(term, pwd)
 	if term.GOOS() == WINDOWS && strings.HasSuffix(tmplCache.Folder, ":") {
 		tmplCache.Folder += `\`
@@ -886,11 +718,14 @@ func dirMatchesOneOf(dir, home, goos string, regexes []string) bool {
 	}
 
 	for _, element := range regexes {
-		normalizedElement := strings.ReplaceAll(element, "\\\\", "/")
-		if strings.HasPrefix(normalizedElement, "~") {
-			normalizedElement = strings.Replace(normalizedElement, "~", home, 1)
+		normalized := strings.ReplaceAll(element, "\\\\", "/")
+		if strings.HasPrefix(normalized, "~") {
+			rem := normalized[1:]
+			if len(rem) == 0 || rem[0] == '/' {
+				normalized = home + rem
+			}
 		}
-		pattern := fmt.Sprintf("^%s$", normalizedElement)
+		pattern := fmt.Sprintf("^%s$", normalized)
 		if goos == WINDOWS || goos == DARWIN {
 			pattern = "(?i)" + pattern
 		}
@@ -961,6 +796,48 @@ func (term *Terminal) SystemInfo() (*SystemInfo, error) {
 	return s, nil
 }
 
+func (term *Terminal) CachePath() string {
+	defer term.Trace(time.Now())
+
+	returnOrBuildCachePath := func(path string) string {
+		// validate root path
+		if _, err := os.Stat(path); err != nil {
+			return ""
+		}
+		// validate oh-my-posh folder, if non existent, create it
+		cachePath := filepath.Join(path, "oh-my-posh")
+		if _, err := os.Stat(cachePath); err == nil {
+			return cachePath
+		}
+		if err := os.Mkdir(cachePath, 0o755); err != nil {
+			return ""
+		}
+		return cachePath
+	}
+
+	// WINDOWS cache folder, should not exist elsewhere
+	if cachePath := returnOrBuildCachePath(term.Getenv("LOCALAPPDATA")); len(cachePath) != 0 {
+		return cachePath
+	}
+
+	// allow the user to set the cache path using OMP_CACHE_DIR
+	if cachePath := returnOrBuildCachePath(term.Getenv("OMP_CACHE_DIR")); len(cachePath) != 0 {
+		return cachePath
+	}
+
+	// get XDG_CACHE_HOME if present
+	if cachePath := returnOrBuildCachePath(term.Getenv("XDG_CACHE_HOME")); len(cachePath) != 0 {
+		return cachePath
+	}
+
+	// HOME cache folder
+	if cachePath := returnOrBuildCachePath(term.Home() + "/.cache"); len(cachePath) != 0 {
+		return cachePath
+	}
+
+	return term.Home()
+}
+
 func IsPathSeparator(env Environment, c uint8) bool {
 	if c == '/' {
 		return true
@@ -1003,9 +880,67 @@ func Base(env Environment, path string) string {
 	return path
 }
 
+func CleanPath(env Environment, path string) string {
+	if len(path) == 0 {
+		return path
+	}
+
+	cleaned := path
+	separator := env.PathSeparator()
+
+	// The prefix can be empty for a relative path.
+	var prefix string
+	if IsPathSeparator(env, cleaned[0]) {
+		prefix = separator
+	}
+
+	if env.GOOS() == WINDOWS {
+		// Normalize (forward) slashes to backslashes on Windows.
+		cleaned = strings.ReplaceAll(cleaned, "/", `\`)
+
+		// Clean the prefix for a UNC path, if any.
+		if regex.MatchString(`^\\{2}[^\\]+`, cleaned) {
+			cleaned = strings.TrimPrefix(cleaned, `\\.\UNC\`)
+			if len(cleaned) == 0 {
+				return cleaned
+			}
+			prefix = `\\`
+		}
+
+		// Always use an uppercase drive letter on Windows.
+		driveLetter := regex.GetCompiledRegex(`^[a-z]:`)
+		cleaned = driveLetter.ReplaceAllStringFunc(cleaned, strings.ToUpper)
+	}
+
+	sb := new(strings.Builder)
+	sb.WriteString(prefix)
+
+	// Clean slashes.
+	matches := regex.FindAllNamedRegexMatch(fmt.Sprintf(`(?P<element>[^\%s]+)`, separator), cleaned)
+	n := len(matches) - 1
+	for i, m := range matches {
+		sb.WriteString(m["element"])
+		if i != n {
+			sb.WriteString(separator)
+		}
+	}
+
+	return sb.String()
+}
+
+func ReplaceTildePrefixWithHomeDir(env Environment, path string) string {
+	if !strings.HasPrefix(path, "~") {
+		return path
+	}
+	rem := path[1:]
+	if len(rem) == 0 || IsPathSeparator(env, rem[0]) {
+		return env.Home() + rem
+	}
+	return path
+}
+
 func ReplaceHomeDirPrefixWithTilde(env Environment, path string) string {
 	home := env.Home()
-	// match Home directory exactly
 	if !strings.HasPrefix(path, home) {
 		return path
 	}
@@ -1028,20 +963,4 @@ func cleanHostName(hostName string) string {
 		}
 	}
 	return hostName
-}
-
-func returnOrBuildCachePath(path string) string {
-	// validate root path
-	if _, err := os.Stat(path); err != nil {
-		return ""
-	}
-	// validate oh-my-posh folder, if non existent, create it
-	cachePath := filepath.Join(path, "oh-my-posh")
-	if _, err := os.Stat(cachePath); err == nil {
-		return cachePath
-	}
-	if err := os.Mkdir(cachePath, 0o755); err != nil {
-		return ""
-	}
-	return cachePath
 }

@@ -108,8 +108,9 @@ func (e *Engine) pwd() {
 }
 
 func (e *Engine) getNewline() string {
-	// WARP terminal will remove \n from the prompt, so we hack a newline in
-	if e.isWarp() {
+	// WARP terminal will remove \n from the prompt, so we hack a newline in.
+	// For Elvish, we do this to prevent cutting off a right-aligned block.
+	if e.isWarp() || e.Env.Shell() == shell.ELVISH {
 		return terminal.LineBreak()
 	}
 
@@ -171,7 +172,7 @@ func (e *Engine) getTitleTemplateText() string {
 }
 
 func (e *Engine) renderBlock(block *config.Block, cancelNewline bool) bool {
-	defer e.patchPowerShellBleed()
+	defer e.applyPowerShellBleedPatch()
 
 	// This is deprecated but we leave it in to not break configs
 	// It is encouraged to use "newline": true on block level
@@ -267,11 +268,11 @@ func (e *Engine) renderBlock(block *config.Block, cancelNewline bool) bool {
 	return true
 }
 
-func (e *Engine) patchPowerShellBleed() {
+func (e *Engine) applyPowerShellBleedPatch() {
 	// when in PowerShell, we need to clear the line after the prompt
 	// to avoid the background being printed on the next line
 	// when at the end of the buffer.
-	// See https://githue.com/JanDeDobbeleer/oh-my-posh/issues/65
+	// See https://github.com/JanDeDobbeleer/oh-my-posh/issues/65
 	if e.Env.Shell() != shell.PWSH && e.Env.Shell() != shell.PWSH5 {
 		return
 	}
@@ -514,10 +515,6 @@ func New(flags *runtime.Flags) *Engine {
 	env.Init()
 	cfg := config.Load(env)
 
-	if cfg.PatchPwshBleed {
-		patchPowerShellBleed(env.Shell(), flags)
-	}
-
 	env.Var = cfg.Var
 	flags.HasTransient = cfg.TransientPrompt != nil
 
@@ -532,22 +529,31 @@ func New(flags *runtime.Flags) *Engine {
 		Plain:  flags.Plain,
 	}
 
+	switch env.Shell() {
+	case shell.ELVISH:
+		// In Elvish, continuous text is always cut off before the right-most cell on the terminal screen.
+		// We have to reduce the terminal width by 1 so a right-aligned block will not be broken.
+		eng.rectifyTerminalWidth(-1)
+	case shell.PWSH, shell.PWSH5:
+		// when in PowerShell, and force patching the bleed bug
+		// we need to reduce the terminal width by 1 so the last
+		// character isn't cut off by the ANSI escape sequences
+		// See https://github.com/JanDeDobbeleer/oh-my-posh/issues/65
+		if cfg.PatchPwshBleed {
+			eng.rectifyTerminalWidth(-1)
+		}
+	}
+
 	return eng
 }
 
-func patchPowerShellBleed(sh string, flags *runtime.Flags) {
-	// when in PowerShell, and force patching the bleed bug
-	// we need to reduce the terminal width by 1 so the last
-	// character isn't cut off by the ANSI escape sequences
-	// See https://github.com/JanDeDobbeleer/oh-my-posh/issues/65
-	if sh != shell.PWSH && sh != shell.PWSH5 {
+func (e *Engine) rectifyTerminalWidth(diff int) {
+	// Since the terminal width may not be given by the CLI flag, we should always call this here.
+	_, err := e.Env.TerminalWidth()
+	if err != nil {
+		// Skip when we're unable to determine the terminal width.
 		return
 	}
 
-	// only do this when relevant
-	if flags.TerminalWidth <= 0 {
-		return
-	}
-
-	flags.TerminalWidth--
+	e.Env.Flags().TerminalWidth += diff
 }

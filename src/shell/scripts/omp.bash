@@ -5,6 +5,10 @@ export POSH_PID=$$
 export CONDA_PROMPT_MODIFIER=false
 export OSTYPE=$OSTYPE
 
+if [[ $OSTYPE =~ ^(msys|cygwin) ]]; then
+    export POSH_PID=$(command cat /proc/$$/winpid)
+fi
+
 # global variables
 _omp_start_time=""
 _omp_stack_count=0
@@ -20,8 +24,9 @@ _omp_ftcs_marks=0
 
 # start timer on command start
 PS0='${_omp_start_time:0:$((_omp_start_time="$(_omp_start_timer)",0))}$(_omp_ftcs_command_start)'
+
 # set secondary prompt
-PS2="$("$_omp_executable" print secondary --shell=bash --shell-version="$BASH_VERSION")"
+_omp_secondary_prompt=$("$_omp_executable" print secondary --shell=bash --shell-version="$BASH_VERSION")
 
 function _omp_set_cursor_position() {
     # not supported in Midnight Commander
@@ -35,7 +40,7 @@ function _omp_set_cursor_position() {
 
     local COL
     local ROW
-    IFS=';' read -sdR -p $'\E[6n' ROW COL
+    IFS=';' read -rsdR -p $'\E[6n' ROW COL
 
     stty "$oldstty"
 
@@ -58,12 +63,43 @@ function set_poshcontext() {
     return
 }
 
-# regular prompt
+function _omp_print_primary() {
+    # Avoid unexpected expansions.
+    shopt -u promptvars
+
+    local prompt
+    if shopt -oq posix; then
+        # Disable in POSIX mode.
+        prompt='[NOTICE: Oh My Posh prompt is not supported in POSIX mode]\n\u@\h:\w\$ '
+    else
+        prompt=$("$_omp_executable" print primary --shell=bash --shell-version="$BASH_VERSION" --status="$_omp_status_cache" --pipestatus="${_omp_pipestatus_cache[*]}" --execution-time="$_omp_elapsed" --stack-count="$_omp_stack_count" --no-status="$_omp_no_exit_code" --terminal-width="${COLUMNS-0}" | tr -d '\0')
+    fi
+    echo "${prompt@P}"
+
+    # Allow command substitution in PS0.
+    shopt -s promptvars
+}
+
+function _omp_print_secondary() {
+    # Avoid unexpected expansions.
+    shopt -u promptvars
+
+    if shopt -oq posix; then
+        # Disable in POSIX mode.
+        echo '> '
+    else
+        echo "${_omp_secondary_prompt@P}"
+    fi
+
+    # Allow command substitution in PS0.
+    shopt -s promptvars
+}
+
 function _omp_hook() {
-    _omp_status_cache=$? _omp_pipestatus_cache=(${PIPESTATUS[@]})
+    _omp_status_cache=$? _omp_pipestatus_cache=("${PIPESTATUS[@]}")
 
     if [[ ${#BP_PIPESTATUS[@]} -ge ${#_omp_pipestatus_cache[@]} ]]; then
-        _omp_pipestatus_cache=(${BP_PIPESTATUS[@]})
+        _omp_pipestatus_cache=("${BP_PIPESTATUS[@]}")
     fi
 
     _omp_stack_count=$((${#DIRSTACK[@]} - 1))
@@ -82,11 +118,22 @@ function _omp_hook() {
     set_poshcontext
     _omp_set_cursor_position
 
-    PS1="$("$_omp_executable" print primary --shell=bash --shell-version="$BASH_VERSION" --status="$_omp_status_cache" --pipestatus="${_omp_pipestatus_cache[*]}" --execution-time="$_omp_elapsed" --stack-count="$_omp_stack_count" --no-status="$_omp_no_exit_code" --terminal-width="${COLUMNS-0}" | tr -d '\0')"
+    PS1='$(_omp_print_primary)'
+    PS2='$(_omp_print_secondary)'
 
     return $_omp_status_cache
 }
 
-if [[ $TERM != linux ]] && ! [[ $PROMPT_COMMAND =~ _omp_hook ]]; then
-    PROMPT_COMMAND="_omp_hook; $PROMPT_COMMAND"
-fi
+function _omp_install_hook() {
+    [[ $TERM = linux ]] && return
+
+    local cmd
+    for cmd in "${PROMPT_COMMAND[@]}"; do
+        if [[ $cmd = "_omp_hook" ]]; then
+            return
+        fi
+    done
+    PROMPT_COMMAND=(_omp_hook "${PROMPT_COMMAND[@]}")
+}
+
+_omp_install_hook

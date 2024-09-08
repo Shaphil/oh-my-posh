@@ -18,6 +18,11 @@ module.exports = {
     "https://fonts.googleapis.com/css2?family=Fira+Code&display=swap"
   ],
   themeConfig: {
+    colorMode: {
+      defaultMode: 'light',
+      disableSwitch: false,
+      respectPrefersColorScheme: true,
+    },
     prism: {
       additionalLanguages: ['powershell', 'lua', 'jsstacktrace', 'toml', 'json', 'yaml'],
     },
@@ -25,7 +30,8 @@ module.exports = {
       title: 'Oh My Posh',
       logo: {
         alt: 'Oh My Posh Logo',
-        src: 'img/logo.svg',
+        src: 'img/logo-dark.svg',
+        srcDark: 'img/logo-light.svg',
       },
       items: [
         {
@@ -162,6 +168,9 @@ module.exports = {
             require.resolve('./src/css/prism-rose-pine-moon.css'),
             require.resolve('./src/css/custom.css')
           ],
+        },
+        blog: {
+          onInlineAuthors: 'ignore'
         },
       },
     ],

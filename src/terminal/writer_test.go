@@ -244,6 +244,12 @@ func TestWriteLength(t *testing.T) {
 		Colors   *color.Set
 	}{
 		{
+			Case:     "Emoji",
+			Input:    " ⏰  ",
+			Expected: 5,
+			Colors:   &color.Set{Foreground: "black", Background: color.ParentBackground},
+		},
+		{
 			Case:     "Bold",
 			Input:    "<b>test</b>",
 			Expected: 4,
@@ -280,8 +286,6 @@ func TestWriteLength(t *testing.T) {
 		ParentColors = []*color.Set{}
 		CurrentColors = tc.Colors
 		Colors = &color.Defaults{}
-
-		Init(shell.GENERIC)
 
 		Write(tc.Colors.Background, tc.Colors.Foreground, tc.Input)
 
