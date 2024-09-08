@@ -60,8 +60,10 @@ type Flags struct {
 	HasTransient  bool
 	PromptCount   int
 	Cleared       bool
+	Cached        bool
 	NoExitCode    bool
 	Column        int
+	JobCount      int
 }
 
 type CommandError struct {
@@ -173,10 +175,12 @@ type Environment interface {
 	HTTPRequest(url string, body io.Reader, timeout int, requestModifiers ...http.RequestModifier) ([]byte, error)
 	IsWsl() bool
 	IsWsl2() bool
+	IsCygwin() bool
 	StackCount() int
 	TerminalWidth() (int, error)
 	CachePath() string
 	Cache() cache.Cache
+	Session() cache.Cache
 	Close()
 	Logs() string
 	InWSLSharedDrive() bool
@@ -198,10 +202,13 @@ type Terminal struct {
 	CmdFlags *Flags
 	Var      maps.Simple
 
-	cwd       string
-	host      string
-	cmdCache  *cache.Command
-	fileCache *cache.File
+	cwd      string
+	host     string
+	cmdCache *cache.Command
+
+	deviceCache  *cache.File
+	sessionCache *cache.File
+
 	tmplCache *cache.Template
 	networks  []*Connection
 
@@ -218,14 +225,23 @@ func (term *Terminal) Init() {
 
 	if term.CmdFlags.Debug {
 		log.Enable()
+		log.Debug("debug mode enabled")
 	}
 
 	if term.CmdFlags.Plain {
 		log.Plain()
+		log.Debug("dlain mode enabled")
 	}
 
-	term.fileCache = &cache.File{}
-	term.fileCache.Init(term.CachePath())
+	initCache := func(fileName string) *cache.File {
+		cache := &cache.File{}
+		cache.Init(filepath.Join(term.CachePath(), fileName))
+		return cache
+	}
+
+	term.deviceCache = initCache(cache.FileName)
+	term.sessionCache = initCache(cache.SessionFileName)
+
 	term.resolveConfigPath()
 	term.cmdCache = &cache.Command{
 		Commands: maps.NewConcurrent(),
@@ -233,18 +249,22 @@ func (term *Terminal) Init() {
 
 	term.tmplCache = &cache.Template{}
 
-	term.SetPromptCount()
+	if !term.CmdFlags.Cached {
+		term.SetPromptCount()
+	}
 }
 
 func (term *Terminal) resolveConfigPath() {
 	defer term.Trace(time.Now())
 
-	if len(term.CmdFlags.Config) == 0 {
-		term.CmdFlags.Config = term.Getenv("POSH_THEME")
+	if poshTheme := term.Getenv("POSH_THEME"); len(poshTheme) > 0 {
+		term.DebugF("config set using POSH_THEME: %s", poshTheme)
+		term.CmdFlags.Config = poshTheme
+		return
 	}
 
 	if len(term.CmdFlags.Config) == 0 {
-		term.Debug("No config set, fallback to default config")
+		term.Debug("no config set, fallback to default config")
 		return
 	}
 
@@ -260,10 +280,14 @@ func (term *Terminal) resolveConfigPath() {
 		return
 	}
 
+	isCygwin := func() bool {
+		return term.Platform() == WINDOWS && len(term.Getenv("OSTYPE")) > 0
+	}
+
 	// Cygwin path always needs the full path as we're on Windows but not really.
 	// Doing filepath actions will convert it to a Windows path and break the init script.
-	if term.Platform() == WINDOWS && term.Shell() == "bash" {
-		term.Debug("Cygwin detected, using full path for config")
+	if isCygwin() {
+		term.Debug("cygwin detected, using full path for config")
 		return
 	}
 
@@ -273,11 +297,14 @@ func (term *Terminal) resolveConfigPath() {
 		configFile = filepath.Join(term.Home(), configFile)
 	}
 
-	if !filepath.IsAbs(configFile) {
-		configFile = filepath.Join(term.Pwd(), configFile)
+	abs, err := filepath.Abs(configFile)
+	if err != nil {
+		term.Error(err)
+		term.CmdFlags.Config = filepath.Clean(configFile)
+		return
 	}
 
-	term.CmdFlags.Config = filepath.Clean(configFile)
+	term.CmdFlags.Config = abs
 }
 
 func (term *Terminal) Trace(start time.Time, args ...string) {
@@ -708,7 +735,11 @@ func (term *Terminal) StackCount() int {
 }
 
 func (term *Terminal) Cache() cache.Cache {
-	return term.fileCache
+	return term.deviceCache
+}
+
+func (term *Terminal) Session() cache.Cache {
+	return term.sessionCache
 }
 
 func (term *Terminal) saveTemplateCache() {
@@ -724,20 +755,21 @@ func (term *Terminal) saveTemplateCache() {
 
 	templateCache, err := json.Marshal(tmplCache)
 	if err == nil {
-		term.fileCache.Set(cache.TEMPLATECACHE, string(templateCache), 1440)
+		term.sessionCache.Set(cache.TEMPLATECACHE, string(templateCache), 1440)
 	}
 }
 
 func (term *Terminal) Close() {
 	defer term.Trace(time.Now())
 	term.saveTemplateCache()
-	term.fileCache.Close()
+	term.deviceCache.Close()
+	term.sessionCache.Close()
 }
 
 func (term *Terminal) LoadTemplateCache() {
 	defer term.Trace(time.Now())
 
-	val, OK := term.fileCache.Get(cache.TEMPLATECACHE)
+	val, OK := term.sessionCache.Get(cache.TEMPLATECACHE)
 	if !OK {
 		return
 	}
@@ -779,6 +811,7 @@ func (term *Terminal) TemplateCache() *cache.Template {
 	tmplCache.PromptCount = term.CmdFlags.PromptCount
 	tmplCache.Env = make(map[string]string)
 	tmplCache.Var = make(map[string]any)
+	tmplCache.Jobs = term.CmdFlags.JobCount
 
 	if term.Var != nil {
 		tmplCache.Var = term.Var
@@ -870,6 +903,8 @@ func dirMatchesOneOf(dir, home, goos string, regexes []string) bool {
 }
 
 func (term *Terminal) SetPromptCount() {
+	defer term.Trace(time.Now())
+
 	countStr := os.Getenv("POSH_PROMPT_COUNT")
 	if len(countStr) > 0 {
 		// this counter is incremented by the shell
@@ -880,13 +915,13 @@ func (term *Terminal) SetPromptCount() {
 		}
 	}
 	var count int
-	if val, found := term.Cache().Get(cache.PROMPTCOUNTCACHE); found {
+	if val, found := term.Session().Get(cache.PROMPTCOUNTCACHE); found {
 		count, _ = strconv.Atoi(val)
 	}
 	// only write to cache if we're the primary prompt
 	if term.CmdFlags.Primary {
 		count++
-		term.Cache().Set(cache.PROMPTCOUNTCACHE, strconv.Itoa(count), 1440)
+		term.Session().Set(cache.PROMPTCOUNTCACHE, strconv.Itoa(count), 1440)
 	}
 	term.CmdFlags.PromptCount = count
 }
@@ -895,9 +930,11 @@ func (term *Terminal) CursorPosition() (row, col int) {
 	if number, err := strconv.Atoi(term.Getenv("POSH_CURSOR_LINE")); err == nil {
 		row = number
 	}
+
 	if number, err := strconv.Atoi(term.Getenv("POSH_CURSOR_COLUMN")); err != nil {
 		col = number
 	}
+
 	return
 }
 
@@ -1003,7 +1040,7 @@ func returnOrBuildCachePath(path string) string {
 	if _, err := os.Stat(cachePath); err == nil {
 		return cachePath
 	}
-	if err := os.Mkdir(cachePath, 0755); err != nil {
+	if err := os.Mkdir(cachePath, 0o755); err != nil {
 		return ""
 	}
 	return cachePath

@@ -144,8 +144,14 @@
     "full_branch_path": {
       "type": "boolean",
       "title": "Full branch path",
-      "description": "display the full branch path instead of only the branch name",
+      "description": "display the full branch path instead of only the last part (e.g. feature/branch instead of branch)",
       "default": true
+    },
+    "mapped_branches": {
+      "type": "object",
+      "title": "Mapped Branches",
+      "description": "Custom glyph/text for specific branches",
+      "default": {}
     },
     "extra_prompt": {
       "type": "object",
@@ -342,6 +348,7 @@
             "lastfm",
             "lua",
             "mercurial",
+            "mvn",
             "nbgv",
             "nightscout",
             "node",
@@ -1466,6 +1473,12 @@
                     "title": "Status string formats",
                     "description": "a key, value map representing the remote URL (or a part of that URL) and icon to use in case the upstream URL contains the key. These get precedence over the standard icons",
                     "default": {}
+                  },
+                  "mapped_branches": {
+                    "$ref": "#/definitions/mapped_branches"
+                  },
+                  "full_branch_path": {
+                    "$ref": "#/definitions/full_branch_path"
                   }
                 }
               }
@@ -3654,6 +3667,9 @@
                   },
                   "native_fallback": {
                     "$ref": "#/definitions/native_fallback"
+                  },
+                  "mapped_branches": {
+                    "$ref": "#/definitions/mapped_branches"
                   }
                 }
               }
@@ -4741,19 +4757,19 @@
     "disable_notice": {
       "type": "boolean",
       "title": "Disable Upgrade Notice",
-      "description": "https://ohmyposh.dev/docs/configuration/title#general-settings",
+      "description": "https://ohmyposh.dev/docs/configuration/general#general-settings",
       "default": false
     },
     "auto_upgrade": {
       "type": "boolean",
       "title": "Enable automatic upgrades for Oh My Posh (supports Windows/macOS only)",
-      "description": "https://ohmyposh.dev/docs/configuration/title#general-settings",
+      "description": "https://ohmyposh.dev/docs/configuration/general#general-settings",
       "default": false
     },
     "patch_pwsh_bleed": {
       "type": "boolean",
       "title": "Patch PowerShell Color Bleed",
-      "description": "https://ohmyposh.dev/docs/configuration/title#general-settings",
+      "description": "https://ohmyposh.dev/docs/configuration/general#general-settings",
       "default": false
     },
     "console_title_template": {

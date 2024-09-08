@@ -12,9 +12,7 @@ import (
 	"github.com/jandedobbeleer/oh-my-posh/src/terminal"
 )
 
-var (
-	cycle *color.Cycle = &color.Cycle{}
-)
+var cycle *color.Cycle = &color.Cycle{}
 
 type Engine struct {
 	Config *config.Config
@@ -71,21 +69,25 @@ func (e *Engine) canWriteRightBlock(length int, rprompt bool) (int, bool) {
 }
 
 func (e *Engine) pwd() {
-	// only print when supported
-	sh := e.Env.Shell()
-	if sh == shell.ELVISH || sh == shell.XONSH {
-		return
-	}
 	// only print when relevant
 	if len(e.Config.PWD) == 0 && !e.Config.OSC99 {
 		return
 	}
 
-	cwd := e.Env.Pwd()
+	// only print when supported
+	sh := e.Env.Shell()
+	if sh == shell.ELVISH || sh == shell.XONSH {
+		return
+	}
+
+	pwd := e.Env.Pwd()
+	if e.Env.IsCygwin() {
+		pwd = strings.ReplaceAll(pwd, `\`, `/`)
+	}
 
 	// Backwards compatibility for deprecated OSC99
 	if e.Config.OSC99 {
-		e.write(terminal.Pwd(terminal.OSC99, "", "", cwd))
+		e.write(terminal.Pwd(terminal.OSC99, "", "", pwd))
 		return
 	}
 
@@ -102,7 +104,7 @@ func (e *Engine) pwd() {
 
 	user := e.Env.User()
 	host, _ := e.Env.Host()
-	e.write(terminal.Pwd(pwdType, user, host, cwd))
+	e.write(terminal.Pwd(pwdType, user, host, pwd))
 }
 
 func (e *Engine) getNewline() string {
@@ -499,4 +501,53 @@ func (e *Engine) adjustTrailingDiamondColorOverrides() {
 	if len(match[terminal.FG]) > 0 {
 		adjustOverride(match[terminal.ANCHOR], color.Ansi(match[terminal.FG]))
 	}
+}
+
+// New returns a prompt engine initialized with the
+// given configuration options, and is ready to print any
+// of the prompt components.
+func New(flags *runtime.Flags) *Engine {
+	env := &runtime.Terminal{
+		CmdFlags: flags,
+	}
+
+	env.Init()
+	cfg := config.Load(env)
+
+	if cfg.PatchPwshBleed {
+		patchPowerShellBleed(env.Shell(), flags)
+	}
+
+	env.Var = cfg.Var
+	flags.HasTransient = cfg.TransientPrompt != nil
+
+	terminal.Init(env.Shell())
+	terminal.BackgroundColor = cfg.TerminalBackground.ResolveTemplate(env)
+	terminal.Colors = cfg.MakeColors()
+	terminal.Plain = flags.Plain
+
+	eng := &Engine{
+		Config: cfg,
+		Env:    env,
+		Plain:  flags.Plain,
+	}
+
+	return eng
+}
+
+func patchPowerShellBleed(sh string, flags *runtime.Flags) {
+	// when in PowerShell, and force patching the bleed bug
+	// we need to reduce the terminal width by 1 so the last
+	// character isn't cut off by the ANSI escape sequences
+	// See https://github.com/JanDeDobbeleer/oh-my-posh/issues/65
+	if sh != shell.PWSH && sh != shell.PWSH5 {
+		return
+	}
+
+	// only do this when relevant
+	if flags.TerminalWidth <= 0 {
+		return
+	}
+
+	flags.TerminalWidth--
 }
