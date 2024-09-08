@@ -97,6 +97,14 @@
           "type": "go"
         },
         {
+          "type": "rust",
+          "style": "powerline",
+          "powerline_symbol": "",
+          "foreground": "#252525",
+          "background": "#ff5e00",
+          "template": "  {{ .Full }} "
+        },
+        {
           "background": "#4063D8",
           "foreground": "#111111",
           "powerline_symbol": "\ue0b0",
