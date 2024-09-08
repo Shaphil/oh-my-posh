@@ -120,6 +120,14 @@
           "type": "python"
         },
         {
+          "type": "python",
+          "style": "powerline",
+          "powerline_symbol": "",
+          "foreground": "#100e23",
+          "background": "#906cff",
+          "template": "  {{ .Full }} "
+        },
+        {
           "background": "#AE1401",
           "foreground": "#ffffff",
           "powerline_symbol": "\ue0b0",
@@ -177,9 +185,7 @@
         },
         {
           "background": "#00897b",
-          "background_templates": [
-            "{{ if gt .Code 0 }}#e91e63{{ end }}"
-          ],
+          "background_templates": ["{{ if gt .Code 0 }}#e91e63{{ end }}"],
           "foreground": "#ffffff",
           "properties": {
             "always_enabled": true
