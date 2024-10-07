@@ -10,7 +10,7 @@ require (
 	github.com/alecthomas/repr v0.4.0 // indirect
 	github.com/esimov/stackblur-go v1.1.0
 	github.com/fogleman/gg v1.3.0
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.5.4
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
@@ -20,20 +20,20 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/wayneashleyberry/terminal-dimensions v1.1.0
 	golang.org/x/crypto v0.26.0 // indirect
-	golang.org/x/image v0.20.0
-	golang.org/x/sys v0.25.0
-	golang.org/x/text v0.18.0
+	golang.org/x/image v0.21.0
+	golang.org/x/sys v0.26.0
+	golang.org/x/text v0.19.0
 	gopkg.in/ini.v1 v1.67.0
 )
 
 require (
 	github.com/ConradIrwin/font v0.0.0-20210318200717-ce8d41cc0732
-	github.com/charmbracelet/bubbles v0.19.0
-	github.com/charmbracelet/bubbletea v1.1.0
+	github.com/charmbracelet/bubbles v0.20.0
+	github.com/charmbracelet/bubbletea v1.1.1
 	github.com/charmbracelet/lipgloss v0.13.0
 	github.com/goccy/go-json v0.10.3
 	github.com/goccy/go-yaml v1.11.3
-	github.com/gookit/goutil v0.6.16
+	github.com/gookit/goutil v0.6.17
 	github.com/hashicorp/hcl/v2 v2.22.0
 	github.com/mattn/go-runewidth v0.0.16
 	github.com/pelletier/go-toml/v2 v2.2.3

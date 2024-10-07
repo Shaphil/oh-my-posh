@@ -1,7 +1,7 @@
 ---
 id: contributors
 title: Contributors
-sidebar_label: ✨ Contributors
+sidebar_label: 🙏 Contributors
 ---
 
 Thanks goes to these wonderful people ([emoji key][acek]):
@@ -382,10 +382,18 @@ Thanks goes to these wonderful people ([emoji key][acek]):
     </tr>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/thep0y"><img src="https://avatars.githubusercontent.com/u/51874567?v=4?s=100" width="100px;" alt="thep0y"/><br /><sub><b>thep0y</b></sub></a><br /><a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=thep0y" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/ClxUne09"><img src="https://avatars.githubusercontent.com/u/175628107?v=4?s=100" width="100px;" alt="Artin"/><br /><sub><b>Artin</b></sub></a><br /><a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=ClxUne09" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/ClxUne09"><img src="https://avatars.githubusercontent.com/u/175628107?v=4?s=100" width="100px;" alt="Artin"/><br /><sub><b>Artin</b></sub></a><br /><a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=ClxUne09" title="Documentation">📖</a> <a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=ClxUne09" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/guspan-tanadi"><img src="https://avatars.githubusercontent.com/u/36249910?v=4?s=100" width="100px;" alt="Guspan Tanadi"/><br /><sub><b>Guspan Tanadi</b></sub></a><br /><a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=guspan-tanadi" title="Documentation">📖</a></td>
       <td align="center" valign="top" width="14.28%"><a href="http://vivosys.com"><img src="https://avatars.githubusercontent.com/u/53049?v=4?s=100" width="100px;" alt="Raman Gupta"/><br /><sub><b>Raman Gupta</b></sub></a><br /><a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=rocketraman" title="Documentation">📖</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/hsnabszhdn"><img src="https://avatars.githubusercontent.com/u/16090309?v=4?s=100" width="100px;" alt="Hossein Abbasi"/><br /><sub><b>Hossein Abbasi</b></sub></a><br /><a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=hsnabszhdn" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://kizivat.eu"><img src="https://avatars.githubusercontent.com/u/3535926?v=4?s=100" width="100px;" alt="David Kizivat"/><br /><sub><b>David Kizivat</b></sub></a><br /><a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=kizivat" title="Code">💻</a> <a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=kizivat" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/mgrubb"><img src="https://avatars.githubusercontent.com/u/351301?v=4?s=100" width="100px;" alt="Michael Grubb"/><br /><sub><b>Michael Grubb</b></sub></a><br /><a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=mgrubb" title="Documentation">📖</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/oliviaBahr"><img src="https://avatars.githubusercontent.com/u/98684296?v=4?s=100" width="100px;" alt="Olivia Bahr"/><br /><sub><b>Olivia Bahr</b></sub></a><br /><a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=oliviaBahr" title="Code">💻</a> <a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=oliviaBahr" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/garysassano"><img src="https://avatars.githubusercontent.com/u/10464497?v=4?s=100" width="100px;" alt="Gary Sassano"/><br /><sub><b>Gary Sassano</b></sub></a><br /><a href="#design-garysassano" title="Design">🎨</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/ilaumjd"><img src="https://avatars.githubusercontent.com/u/16514431?v=4?s=100" width="100px;" alt="Ilham AM"/><br /><sub><b>Ilham AM</b></sub></a><br /><a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=ilaumjd" title="Code">💻</a> <a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=ilaumjd" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://trajano.net/"><img src="https://avatars.githubusercontent.com/u/110627?v=4?s=100" width="100px;" alt="Archimedes Trajano"/><br /><sub><b>Archimedes Trajano</b></sub></a><br /><a href="https://github.com/JanDeDobbeleer/oh-my-posh/commits?author=trajano" title="Documentation">📖</a></td>
     </tr>
   </tbody>
 </table>

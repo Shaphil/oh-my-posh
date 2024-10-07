@@ -10,7 +10,7 @@ import (
 )
 
 type Cache interface {
-	Init(home string)
+	Init(filePath string, persist bool)
 	Close()
 	// Gets the value for a given key.
 	// Returns the value and a boolean indicating if the key was found.
@@ -27,12 +27,12 @@ const (
 	FileName = "omp.cache"
 )
 
-var SessionFileName = fmt.Sprintf("%s.%s", FileName, pid())
+var SessionFileName = fmt.Sprintf("%s.%s", FileName, sessionID())
 
-func pid() string {
-	pid := os.Getenv("POSH_PID")
+func sessionID() string {
+	pid := os.Getenv("POSH_SESSION_ID")
 	if len(pid) == 0 {
-		log.Debug("POSH_PID not set, using process pid")
+		log.Debug("POSH_SESSION_ID not set, using PID")
 		pid = strconv.Itoa(os.Getppid())
 	}
 

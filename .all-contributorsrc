@@ -1122,8 +1122,8 @@
       ]
     },
     {
-      "login": "vedantmgoyal2009",
-      "name": "Begula",
+      "login": "vedantmgoyal9",
+      "name": "Vedant",
       "avatar_url": "https://avatars.githubusercontent.com/u/83997633?v=4",
       "profile": "https://bittu.eu.org",
       "contributions": [
@@ -2709,7 +2709,8 @@
       "avatar_url": "https://avatars.githubusercontent.com/u/175628107?v=4",
       "profile": "https://github.com/ClxUne09",
       "contributions": [
-        "doc"
+        "doc",
+        "code"
       ]
     },
     {
@@ -2737,6 +2738,63 @@
       "profile": "https://github.com/hsnabszhdn",
       "contributions": [
         "code"
+      ]
+    },
+    {
+      "login": "kizivat",
+      "name": "David Kizivat",
+      "avatar_url": "https://avatars.githubusercontent.com/u/3535926?v=4",
+      "profile": "https://kizivat.eu",
+      "contributions": [
+        "code",
+        "doc"
+      ]
+    },
+    {
+      "login": "mgrubb",
+      "name": "Michael Grubb",
+      "avatar_url": "https://avatars.githubusercontent.com/u/351301?v=4",
+      "profile": "https://github.com/mgrubb",
+      "contributions": [
+        "doc"
+      ]
+    },
+    {
+      "login": "oliviaBahr",
+      "name": "Olivia Bahr",
+      "avatar_url": "https://avatars.githubusercontent.com/u/98684296?v=4",
+      "profile": "https://github.com/oliviaBahr",
+      "contributions": [
+        "code",
+        "doc"
+      ]
+    },
+    {
+      "login": "garysassano",
+      "name": "Gary Sassano",
+      "avatar_url": "https://avatars.githubusercontent.com/u/10464497?v=4",
+      "profile": "https://github.com/garysassano",
+      "contributions": [
+        "design"
+      ]
+    },
+    {
+      "login": "ilaumjd",
+      "name": "Ilham AM",
+      "avatar_url": "https://avatars.githubusercontent.com/u/16514431?v=4",
+      "profile": "https://github.com/ilaumjd",
+      "contributions": [
+        "code",
+        "doc"
+      ]
+    },
+    {
+      "login": "trajano",
+      "name": "Archimedes Trajano",
+      "avatar_url": "https://avatars.githubusercontent.com/u/110627?v=4",
+      "profile": "https://trajano.net/",
+      "contributions": [
+        "doc"
       ]
     }
   ],

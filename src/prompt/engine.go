@@ -108,17 +108,19 @@ func (e *Engine) pwd() {
 }
 
 func (e *Engine) getNewline() string {
-	// WARP terminal will remove \n from the prompt, so we hack a newline in.
-	// For Elvish, we do this to prevent cutting off a right-aligned block.
-	if e.isWarp() || e.Env.Shell() == shell.ELVISH {
+	if e.Plain || e.Env.Flags().Debug {
+		return "\n"
+	}
+
+	// Warp terminal will remove a newline character ('\n') from the prompt, so we hack it in.
+	// For Elvish on Windows, we do this to prevent cutting off a right-aligned block.
+	if e.isWarp() || (e.Env.Shell() == shell.ELVISH && e.Env.GOOS() == runtime.WINDOWS) {
 		return terminal.LineBreak()
 	}
 
-	// TCSH needs a space before the LITERAL newline character or it will not render correctly
-	// don't ask why, it be like that sometimes.
-	// https://unix.stackexchange.com/questions/99101/properly-defining-a-multi-line-prompt-in-tcsh#comment1342462_322189
+	// To avoid improper translations in Tcsh, we use an invisible word joiner character (U+2060) to separate a newline from possible preceding escape sequences.
 	if e.Env.Shell() == shell.TCSH {
-		return ` \n`
+		return "\u2060\\n"
 	}
 
 	return "\n"
@@ -157,7 +159,9 @@ func (e *Engine) shouldFill(filler string, padLength int) (string, bool) {
 	}
 
 	repeat := padLength / lenFiller
-	return strings.Repeat(filler, repeat), true
+	unfilled := padLength % lenFiller
+	text := strings.Repeat(filler, repeat) + strings.Repeat(" ", unfilled)
+	return text, true
 }
 
 func (e *Engine) getTitleTemplateText() string {
@@ -504,6 +508,17 @@ func (e *Engine) adjustTrailingDiamondColorOverrides() {
 	}
 }
 
+func (e *Engine) rectifyTerminalWidth(diff int) {
+	// Since the terminal width may not be given by the CLI flag, we should always call this here.
+	_, err := e.Env.TerminalWidth()
+	if err != nil {
+		// Skip when we're unable to determine the terminal width.
+		return
+	}
+
+	e.Env.Flags().TerminalWidth += diff
+}
+
 // New returns a prompt engine initialized with the
 // given configuration options, and is ready to print any
 // of the prompt components.
@@ -530,9 +545,16 @@ func New(flags *runtime.Flags) *Engine {
 	}
 
 	switch env.Shell() {
-	case shell.ELVISH:
-		// In Elvish, continuous text is always cut off before the right-most cell on the terminal screen.
-		// We have to reduce the terminal width by 1 so a right-aligned block will not be broken.
+	case shell.XONSH:
+		// In Xonsh, the behavior of wrapping at the end of a prompt line is inconsistent across platforms.
+		// On Windows, it wraps before the rightmost cell on the terminal screen, that is, the rightmost cell is never available for a prompt line.
+		if eng.Env.GOOS() == runtime.WINDOWS {
+			eng.rectifyTerminalWidth(-1)
+		}
+	case shell.TCSH, shell.ELVISH:
+		// In Tcsh, newlines in a prompt are badly translated.
+		// No silver bullet here. We have to reduce the terminal width by 1 so a right-aligned block will not be broken.
+		// In Elvish, the behavior is similar to that in Xonsh, but we do this for all platforms.
 		eng.rectifyTerminalWidth(-1)
 	case shell.PWSH, shell.PWSH5:
 		// when in PowerShell, and force patching the bleed bug
@@ -545,15 +567,4 @@ func New(flags *runtime.Flags) *Engine {
 	}
 
 	return eng
-}
-
-func (e *Engine) rectifyTerminalWidth(diff int) {
-	// Since the terminal width may not be given by the CLI flag, we should always call this here.
-	_, err := e.Env.TerminalWidth()
-	if err != nil {
-		// Skip when we're unable to determine the terminal width.
-		return
-	}
-
-	e.Env.Flags().TerminalWidth += diff
 }
