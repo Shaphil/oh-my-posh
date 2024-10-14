@@ -357,22 +357,27 @@ func (term *Terminal) GOOS() string {
 
 func (term *Terminal) RunCommand(command string, args ...string) (string, error) {
 	defer term.Trace(time.Now(), append([]string{command}, args...)...)
+
 	if cacheCommand, ok := term.cmdCache.Get(command); ok {
 		command = cacheCommand
 	}
+
 	output, err := cmd.Run(command, args...)
 	if err != nil {
 		term.Error(err)
 	}
+
 	term.Debug(output)
 	return output, err
 }
 
 func (term *Terminal) RunShellCommand(shell, command string) string {
 	defer term.Trace(time.Now())
+
 	if out, err := term.RunCommand(shell, "-c", command); err == nil {
 		return out
 	}
+
 	return ""
 }
 
@@ -591,8 +596,25 @@ func (term *Terminal) saveTemplateCache() {
 func (term *Terminal) Close() {
 	defer term.Trace(time.Now())
 	term.saveTemplateCache()
+	term.clearCacheFiles()
 	term.deviceCache.Close()
 	term.sessionCache.Close()
+}
+
+func (term *Terminal) clearCacheFiles() {
+	if !term.CmdFlags.Init {
+		return
+	}
+
+	deletedFiles, err := cache.Clear(term.CachePath(), false)
+	if err != nil {
+		term.Error(err)
+		return
+	}
+
+	for _, file := range deletedFiles {
+		term.DebugF("removed cache file: %s", file)
+	}
 }
 
 func (term *Terminal) LoadTemplateCache() {

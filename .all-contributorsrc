@@ -2796,6 +2796,26 @@
       "contributions": [
         "doc"
       ]
+    },
+    {
+      "login": "devxpain",
+      "name": "devxpain",
+      "avatar_url": "https://avatars.githubusercontent.com/u/170700110?v=4",
+      "profile": "https://github.com/devxpain",
+      "contributions": [
+        "doc"
+      ]
+    },
+    {
+      "login": "AntoninRuan",
+      "name": "Antonin Ruan",
+      "avatar_url": "https://avatars.githubusercontent.com/u/43148004?v=4",
+      "profile": "https://www.antonin-ruan.fr",
+      "contributions": [
+        "code",
+        "design",
+        "doc"
+      ]
     }
   ],
   "contributorsPerLine": 7,
