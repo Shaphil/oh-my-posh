@@ -1,3 +1,9 @@
+### IDEs and Editors
+.idea
+.idea/**
+.code
+.code/**
+
 # APM
 apm_modules/
 
