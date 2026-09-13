@@ -1,34 +1,38 @@
 package segments
 
-import (
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-)
-
 type Pnpm struct {
-	language
+	Language
 }
 
 func (n *Pnpm) Enabled() bool {
-	return n.language.Enabled()
+	n.loadSpec()
+
+	return n.Language.Enabled()
+}
+
+// Activation implements the activation gate; see Language.activation.
+func (n *Pnpm) Activation() Activation {
+	n.loadSpec()
+
+	return n.activation()
+}
+
+func (n *Pnpm) loadSpec() {
+	n.extensions = []string{fileName, "pnpm-lock.yaml"}
+	n.tooling = map[string]*cmd{
+		// Not marked versionCacheable: same Corepack shim risk as yarn (see
+		// yarn.go) - pnpm is equally commonly managed through Corepack's
+		// package.json-pinned dispatch.
+		pnpmToolName: {
+			executable: pnpmToolName,
+			args:       []string{versionFlagArg},
+			regex:      versionRegex,
+		},
+	}
+	n.defaultTooling = []string{pnpmToolName}
+	n.versionURLTemplate = "https://github.com/pnpm/pnpm/releases/tag/v{{ .Full }}"
 }
 
 func (n *Pnpm) Template() string {
-	return " \U000F02C1 {{.Full}} "
-}
-
-func (n *Pnpm) Init(props properties.Properties, env runtime.Environment) {
-	n.language = language{
-		env:        env,
-		props:      props,
-		extensions: []string{"package.json", "pnpm-lock.yaml"},
-		commands: []*cmd{
-			{
-				executable: "pnpm",
-				args:       []string{"--version"},
-				regex:      `(?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+)))`,
-			},
-		},
-		versionURLTemplate: "https://github.com/pnpm/pnpm/releases/tag/v{{ .Full }}",
-	}
+	return " \ue865 {{.Full}} "
 }

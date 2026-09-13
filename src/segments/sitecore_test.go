@@ -4,21 +4,20 @@ import (
 	"path"
 	"testing"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	"github.com/stretchr/testify/assert"
-	testify_ "github.com/stretchr/testify/mock"
 )
 
 func TestSitecoreSegment(t *testing.T) {
 	cases := []struct {
 		Case               string
 		ExpectedString     string
+		UserFileContent    string
 		ExpectedEnabled    bool
 		SitecoreFileExists bool
 		UserFileExists     bool
-		UserFileContent    string
 		DisplayDefault     bool
 	}{
 		{Case: "Disabled, no sitecore.json file and user.json file", ExpectedString: "", ExpectedEnabled: false, SitecoreFileExists: false, UserFileExists: false},
@@ -89,11 +88,9 @@ func TestSitecoreSegment(t *testing.T) {
 		env.On("HasFiles", "sitecore.json").Return(tc.SitecoreFileExists)
 		env.On("HasFilesInDir", ".sitecore", "user.json").Return(tc.UserFileExists)
 		env.On("FileContent", path.Join(".sitecore", "user.json")).Return(tc.UserFileContent)
-		env.On("Debug", testify_.Anything)
-		env.On("Error", testify_.Anything)
 
-		props := properties.Map{
-			properties.DisplayDefault: tc.DisplayDefault,
+		props := options.Map{
+			options.DisplayDefault: tc.DisplayDefault,
 		}
 
 		sitecore := &Sitecore{}

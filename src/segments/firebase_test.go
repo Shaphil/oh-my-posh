@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 	"github.com/stretchr/testify/assert"
-	testify_ "github.com/stretchr/testify/mock"
 )
 
 func TestFirebaseSegment(t *testing.T) {
@@ -19,8 +19,8 @@ func TestFirebaseSegment(t *testing.T) {
 		Case            string
 		ActiveConfig    string
 		ActivePath      string
-		ExpectedEnabled bool
 		ExpectedString  string
+		ExpectedEnabled bool
 	}{
 		{
 			Case:            "happy path",
@@ -58,11 +58,12 @@ func TestFirebaseSegment(t *testing.T) {
 		env.On("Pwd").Return(tc.ActivePath)
 		fcPath := filepath.Join("home", ".config", "configstore", "firebase-tools.json")
 		env.On("FileContent", fcPath).Return(tc.ActiveConfig)
-		env.On("Error", testify_.Anything).Return()
-		f := Firebase{
-			env: env,
-		}
+
+		f := &Firebase{}
+		f.Init(options.Map{}, env)
+
 		f.Enabled()
+
 		assert.Equal(t, tc.ExpectedEnabled, f.Enabled())
 		if tc.ExpectedEnabled {
 			assert.Equal(t, tc.ExpectedString, renderTemplate(env, f.Template(), f), tc.Case)
@@ -101,10 +102,10 @@ func TestGetFirebaseActiveConfig(t *testing.T) {
 		configPath := filepath.Join("home", ".config", "configstore")
 		contentPath := filepath.Join(configPath, "firebase-tools.json")
 		env.On("FileContent", contentPath).Return(tc.ActiveConfig)
-		env.On("Error", testify_.Anything).Return()
-		f := Firebase{
-			env: env,
-		}
+
+		f := &Firebase{}
+		f.Init(options.Map{}, env)
+
 		got, err := f.getActiveConfig(configPath)
 		assert.Equal(t, tc.ExpectedString, got, tc.Case)
 		if len(tc.ExpectedError) > 0 {

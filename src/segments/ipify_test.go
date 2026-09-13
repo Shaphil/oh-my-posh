@@ -5,14 +5,12 @@ import (
 	"net"
 	"testing"
 
+	"github.com/jandedobbeleer/oh-my-posh/src/cache"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	"github.com/stretchr/testify/assert"
 	testify_ "github.com/stretchr/testify/mock"
-)
-
-const (
-	IPIFYAPIURL = "https://api.ipify.org"
 )
 
 type mockedipAPI struct {
@@ -56,11 +54,15 @@ func TestIpifySegment(t *testing.T) {
 		api.On("Get").Return(tc.IPDate, tc.Error)
 
 		ipify := &IPify{
-			api: api,
+			api:     api,
+			env:     &mock.Environment{},
+			options: options.Map{},
 		}
 
 		enabled := ipify.Enabled()
 		assert.Equal(t, tc.ExpectedEnabled, enabled, tc.Case)
+
+		cache.Device.DeleteAll()
 
 		if !enabled {
 			continue

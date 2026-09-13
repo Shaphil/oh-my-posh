@@ -6,7 +6,7 @@ sidebar_label: Fossil
 
 ## What
 
-Display [fossil][fossil] information when in a fossil repository.
+Display [Fossil][fossil] information when in a fossil repository.
 
 ## Sample Configuration
 
@@ -20,11 +20,11 @@ import Config from '@site/src/components/Config.js';
   "background": "#ffeb3b"
 }}/>
 
-## Properties
+## Options
 
-| Name              | Type      | Default | Description                                                                                                                                                                                                     |
-| ----------------- | :-------: | :-----: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `native_fallback` | `boolean` | `false` | when set to `true` and `fossil.exe` is not available when inside a WSL2 shared Windows drive, we will fallback to the native fossil executable to fetch data. Not all information can be displayed in this case |
+| Name              |   Type    | Default | Description                                                                                                                                                                                                       |
+| ----------------- | :-------: | :-----: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `native_fallback` | `boolean` | `false` | when set to `true` and `fossil.exe` is not available when inside a WSL2 shared Windows drive, we will fallback to the native `fossil` executable to fetch data. Not all information can be displayed in this case |
 
 ## Template ([info][templates])
 
@@ -67,5 +67,4 @@ Local changes use the following syntax:
 | `>`  | moved       |
 
 [fossil]: https://fossil-scm.org
-[templates]: /docs/config-templates
-[hyperlinks]: /docs/config-templates#custom
+[templates]: /docs/configuration/templates

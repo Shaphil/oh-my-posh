@@ -7,20 +7,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	testify_mock "github.com/stretchr/testify/mock"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 )
 
 func TestHelmSegment(t *testing.T) {
 	cases := []struct {
 		Case            string
-		HelmExists      bool
-		ExpectedEnabled bool
 		ExpectedString  string
 		Template        string
 		DisplayMode     string
 		ChartFile       string
+		HelmExists      bool
+		ExpectedEnabled bool
 	}{
 		{
 			Case:            "Helm not installed",
@@ -89,14 +89,13 @@ func TestHelmSegment(t *testing.T) {
 		env.On("HasParentFilePath", tc.ChartFile, false).Return(&runtime.FileInfo{}, nil)
 		env.On("HasParentFilePath", testify_mock.Anything, false).Return(&runtime.FileInfo{}, errors.New("no such file or directory"))
 
-		props := properties.Map{
+		props := options.Map{
 			DisplayMode: tc.DisplayMode,
 		}
 
-		h := &Helm{
-			env:   env,
-			props: props,
-		}
+		h := &Helm{}
+		h.Init(props, env)
+
 		assert.Equal(t, tc.ExpectedEnabled, h.Enabled(), tc.Case)
 		if tc.ExpectedEnabled {
 			assert.Equal(t, tc.ExpectedString, renderTemplate(env, h.Template(), h), tc.Case)

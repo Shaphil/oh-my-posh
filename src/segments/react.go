@@ -1,38 +1,43 @@
+//nolint:dupl // react and aurelia are deliberately parallel: identical node-package detection, differing only in package name and version metadata
 package segments
 
-import (
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-)
-
 type React struct {
-	language
+	Language
 }
 
 func (r *React) Template() string {
 	return languageTemplate
 }
 
-func (r *React) Init(props properties.Properties, env runtime.Environment) {
-	r.language = language{
-		env:        env,
-		props:      props,
-		extensions: []string{"package.json"},
-		commands: []*cmd{
-			{
-				regex:      `(?:(?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+))))`,
-				getVersion: r.getVersion,
-			},
-		},
-		versionURLTemplate: "https://github.com/facebook/react/releases/tag/v{{.Full}}",
+func (r *React) Enabled() bool {
+	r.loadSpec()
+
+	if !r.hasNodePackage("react") {
+		return false
 	}
+
+	return r.Language.Enabled()
 }
 
-func (r *React) Enabled() bool {
-	return r.language.Enabled()
+// Activation implements the activation gate; see Language.activation.
+func (r *React) Activation() Activation {
+	r.loadSpec()
+
+	return r.activation()
+}
+
+func (r *React) loadSpec() {
+	r.extensions = []string{fileName}
+	r.tooling = map[string]*cmd{
+		"react": {
+			regex:      versionRegexPrefixed,
+			getVersion: r.getVersion,
+		},
+	}
+	r.defaultTooling = []string{"react"}
+	r.versionURLTemplate = "https://github.com/facebook/react/releases/tag/v{{.Full}}"
 }
 
 func (r *React) getVersion() (string, error) {
-	// tested by nx_test.go
-	return getNodePackageVersion(r.language.env, "react")
+	return r.nodePackageVersion("react")
 }

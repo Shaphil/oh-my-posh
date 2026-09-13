@@ -1,34 +1,41 @@
 package segments
 
-import (
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-)
-
 type Yarn struct {
-	language
-}
-
-func (n *Yarn) Enabled() bool {
-	return n.language.Enabled()
+	Language
 }
 
 func (n *Yarn) Template() string {
-	return " \U000F011B {{.Full}} "
+	return " \ue6a7 {{.Full}} "
 }
 
-func (n *Yarn) Init(props properties.Properties, env runtime.Environment) {
-	n.language = language{
-		env:        env,
-		props:      props,
-		extensions: []string{"package.json", "yarn.lock"},
-		commands: []*cmd{
-			{
-				executable: "yarn",
-				args:       []string{"--version"},
-				regex:      `(?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+)))`,
-			},
+func (n *Yarn) Enabled() bool {
+	n.loadSpec()
+
+	return n.Language.Enabled()
+}
+
+// Activation implements the activation gate; see Language.activation.
+func (n *Yarn) Activation() Activation {
+	n.loadSpec()
+
+	return n.activation()
+}
+
+func (n *Yarn) loadSpec() {
+	n.extensions = []string{fileName, "yarn.lock"}
+	n.tooling = map[string]*cmd{
+		// Not marked versionCacheable: when Corepack manages yarn (the
+		// officially recommended setup for yarn >=2), the "yarn" resolved
+		// from PATH is a Corepack shim whose own file never changes but which
+		// dispatches to whatever version the current project's package.json
+		// "packageManager" field pins - so the same resolved path/mtime/size
+		// can legitimately report different versions in different projects.
+		yarnToolName: {
+			executable: yarnToolName,
+			args:       []string{versionFlagArg},
+			regex:      versionRegex,
 		},
-		versionURLTemplate: "https://github.com/yarnpkg/berry/releases/tag/v{{ .Full }}",
 	}
+	n.defaultTooling = []string{yarnToolName}
+	n.versionURLTemplate = "https://github.com/yarnpkg/berry/releases/tag/v{{ .Full }}"
 }

@@ -1,30 +1,70 @@
-const path = require('path');
+import {themes as prismThemes} from 'prism-react-renderer';
 
-module.exports = {
+export default {
   title: 'Oh My Posh',
-  tagline: 'A prompt theme engine for any shell.',
+  tagline: 'The most customizable and fastest prompt engine for any shell.',
   url: 'https://ohmyposh.dev',
   baseUrl: '/',
   favicon: 'img/favicons.svg',
   organizationName: 'jandedobbeleer',
   projectName: 'oh-my-posh',
-  onBrokenLinks: 'ignore',
+  onBrokenLinks: 'throw',
   plugins: [
-    path.resolve(__dirname, 'plugins', 'appinsights'),
-    'docusaurus-node-polyfills'
+    './plugins/appinsights',
+    './plugins/segments',
+    './plugins/themes'
+  ],
+  headTags: [
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'alternate',
+        type: 'text/plain',
+        title: 'llms.txt',
+        href: '/llms.txt',
+      },
+    },
   ],
   stylesheets: [
-    "https://rsms.me/inter/inter.css",
-    "https://fonts.googleapis.com/css2?family=Fira+Code&display=swap"
+    "https://rsms.me/inter/inter.css"
   ],
   themeConfig: {
+    metadata: [
+      // A raster, unlike everything else the site shows: link previews will not render an SVG.
+      // Composed from the same rendered default prompt the homepage inlines, by
+      // scripts/render-og-image.mjs - which is run by hand, not by the build, since it needs a
+      // headless browser to pick up the real font. Re-run it when the default config changes.
+      {property: 'og:image', content: 'https://ohmyposh.dev/img/og-image.png'},
+      {property: 'og:image:width', content: '1200'},
+      {property: 'og:image:height', content: '630'},
+      {property: 'og:type', content: 'website'},
+      // Without this the card renders as a thumbnail beside the text rather than full width.
+      {name: 'twitter:card', content: 'summary_large_image'},
+      {name: 'twitter:image', content: 'https://ohmyposh.dev/img/og-image.png'},
+    ],
     colorMode: {
       defaultMode: 'light',
       disableSwitch: false,
-      respectPrefersColorScheme: true,
+      // false, so the toggle is light <-> dark and nothing else. With it on, Docusaurus adds a
+      // third "system" step to the cycle that looks identical to whichever of the two the OS is
+      // already set to - a click that appears to do nothing.
+      respectPrefersColorScheme: false,
     },
     prism: {
-      additionalLanguages: ['powershell', 'lua', 'jsstacktrace', 'toml', 'json', 'yaml'],
+      // Matches ConfigEditor's own DARK_COLORS/LIGHT_COLORS pair (see
+      // src/components/ConfigEditor/editorTheme.js) so every fenced code block in the docs
+      // follows the site's light/dark switch the same way the config editor does, instead of
+      // staying on one theme regardless of colour mode. Night Owl: a blue-forward pair that
+      // sits close to the site's own palette while coloring far more token types than the
+      // previous github/palenight pair, which read flat inside the framed blocks.
+      theme: prismThemes.nightOwlLight,
+      darkTheme: prismThemes.nightOwl,
+      additionalLanguages: ['powershell', 'lua', 'jsstacktrace', 'toml'],
+    },
+    docs: {
+        sidebar: {
+          hideable: false,
+        },
     },
     navbar: {
       title: 'Oh My Posh',
@@ -41,30 +81,29 @@ module.exports = {
           position: 'left',
         },
         {
+          to: 'docs/segments/overview',
+          label: 'Segments',
+          position: 'left',
+        },
+        {
+          to: 'docs/themes',
+          label: 'Themes',
+          position: 'left',
+        },
+        {
+          to: 'docs/studio',
+          label: 'Studio',
+          position: 'left',
+        },
+        {
           to: 'blog',
           label: 'Blog',
           position: 'left'
         },
         {
-          href: 'https://github.com/sponsors/JanDeDobbeleer',
-          label: 'Sponsor',
-          position: 'left',
-        },
-        {
-          href: 'https://swag.ohmyposh.dev',
-          label: 'Swag',
-          position: 'left',
-        },
-        {
           href: 'https://github.com/jandedobbeleer/oh-my-posh',
           className: 'header-github-link',
           'aria-label': 'GitHub repository',
-          position: 'right',
-        },
-        {
-          href: 'https://www.gitkraken.com/invite/nQmDPR9D',
-          className: 'header-gk-link',
-          'aria-label': 'GitKraken',
           position: 'right',
         },
         {
@@ -82,7 +121,10 @@ module.exports = {
       ],
     },
     footer: {
-      style: 'dark',
+      // No `style: 'dark'`: that adds .footer--dark, which pins the footer to one dark palette
+      // in both colour modes, so in light mode the page ended on a slab that matched nothing
+      // else on it. The footer now follows the navbar in whichever mode is active - see .footer
+      // in src/css/custom.css.
       links: [
         {
           title: 'How to',
@@ -118,14 +160,6 @@ module.exports = {
           title: 'Links',
           items: [
             {
-              label: 'Sponsor',
-              href: 'https://github.com/sponsors/JanDeDobbeleer',
-            },
-            {
-              label: 'GitKraken',
-              href: 'https://www.gitkraken.com/invite/nQmDPR9D',
-            },
-            {
               label: 'Docusaurus',
               href: 'https://github.com/facebook/docusaurus',
             },
@@ -135,16 +169,34 @@ module.exports = {
             },
           ],
         },
+        {
+          title: 'Support',
+          items: [
+            {
+              label: 'GitHub Sponsors',
+              href: 'https://github.com/sponsors/JanDeDobbeleer',
+            },
+            {
+              label: 'Product spotlight',
+              href: 'https://buy.polar.sh/polar_cl_qnmZxboq1IDUJo03mk2Jue6ktqZrCXElnzH2s2xbV2R',
+            },
+            {
+              label: 'Swag',
+              href: 'https://swag.ohmyposh.dev',
+            },
+          ],
+        },
+        {
+          title: 'Our sponsors',
+          items: [
+            {
+              label: 'CodeRabbit',
+              href: 'https://coderabbit.link/posh',
+            },
+          ],
+        },
       ],
       copyright: `Copyright © ${new Date().getFullYear()} <a href='https://github.com/sponsors/JanDeDobbeleer' target='_blank'>Jan De Dobbeleer</a> and <a href='/docs/contributors'>contributors</a>.`,
-    },
-    announcementBar: {
-      id: 'support_us',
-      content:
-        'If you\'re enjoying Oh My Posh, consider becoming a <a target="_blank" rel="noopener noreferrer" href="https://github.com/sponsors/JanDeDobbeleer">sponsor</a> to keep the project going strong 💪',
-      backgroundColor: '#2c7ae0',
-      textColor: '#ffffff',
-      isCloseable: false,
     },
     appInsights: {
       instrumentationKey: '51741aa7-e087-4e80-b7b0-0863d467462a',
@@ -160,13 +212,12 @@ module.exports = {
       '@docusaurus/preset-classic',
       {
         docs: {
-          sidebarPath: require.resolve('./sidebars.js'),
+          sidebarPath: './sidebars.js',
           editUrl: 'https://github.com/jandedobbeleer/oh-my-posh/edit/main/website/',
         },
         theme: {
           customCss: [
-            require.resolve('./src/css/prism-rose-pine-moon.css'),
-            require.resolve('./src/css/custom.css')
+            './src/css/custom.css'
           ],
         },
         blog: {

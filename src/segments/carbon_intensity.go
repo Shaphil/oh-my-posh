@@ -4,13 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 )
 
 type CarbonIntensity struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
 	TrendIcon string
 
@@ -22,15 +21,15 @@ type CarbonIntensityResponse struct {
 }
 
 type CarbonIntensityPeriod struct {
+	Intensity *CarbonIntensityData `json:"intensity"`
 	From      string               `json:"from"`
 	To        string               `json:"to"`
-	Intensity *CarbonIntensityData `json:"intensity"`
 }
 
 type CarbonIntensityData struct {
+	Index    Index  `json:"index"`
 	Forecast Number `json:"forecast"`
 	Actual   Number `json:"actual"`
-	Index    Index  `json:"index"`
 }
 
 type Number int
@@ -44,6 +43,15 @@ func (n Number) String() string {
 }
 
 type Index string
+
+// String is what a template compares an index against. `{{ eq "moderate" .Index }}` reads the
+// value itself and works the same, but only where a segment renders from its writer: a segment
+// rendered from recorded data has no Go type to carry Icon, so the recorder stores an index as
+// its method results, and a template reaching past them for the raw string finds nothing. Naming
+// the string as a method keeps both readings available wherever a segment renders from.
+func (i Index) String() string {
+	return string(i)
+}
 
 func (i Index) Icon() string {
 	switch i {
@@ -66,7 +74,7 @@ func (d *CarbonIntensity) Enabled() bool {
 	err := d.setStatus()
 
 	if err != nil {
-		d.env.Error(err)
+		log.Error(err)
 		return false
 	}
 
@@ -77,41 +85,19 @@ func (d *CarbonIntensity) Template() string {
 	return " CO₂ {{ .Index.Icon }}{{ .Actual.String }} {{ .TrendIcon }} {{ .Forecast.String }} "
 }
 
-func (d *CarbonIntensity) updateCache(responseBody []byte, url string, cacheTimeoutInMinutes int) {
-	if cacheTimeoutInMinutes > 0 {
-		d.env.Cache().Set(url, string(responseBody), cacheTimeoutInMinutes)
-	}
-}
-
 func (d *CarbonIntensity) getResult() (*CarbonIntensityResponse, error) {
-	cacheTimeoutInMinutes := d.props.GetInt(properties.CacheTimeout, properties.DefaultCacheTimeout)
-
 	response := new(CarbonIntensityResponse)
 	url := "https://api.carbonintensity.org.uk/intensity"
 
-	if cacheTimeoutInMinutes > 0 {
-		cachedValue, foundInCache := d.env.Cache().Get(url)
-
-		if foundInCache {
-			err := json.Unmarshal([]byte(cachedValue), response)
-			if err == nil {
-				return response, nil
-			}
-			// If there was an error, just fall through to refetching
-		}
-	}
-
-	httpTimeout := d.props.GetInt(properties.HTTPTimeout, properties.DefaultHTTPTimeout)
+	httpTimeout := d.options.Int(options.HTTPTimeout, options.DefaultHTTPTimeout)
 
 	body, err := d.env.HTTPRequest(url, nil, httpTimeout)
 	if err != nil {
-		d.updateCache(body, url, cacheTimeoutInMinutes)
 		return new(CarbonIntensityResponse), err
 	}
 
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		d.updateCache(body, url, cacheTimeoutInMinutes)
 		return new(CarbonIntensityResponse), err
 	}
 
@@ -147,9 +133,4 @@ func (d *CarbonIntensity) setStatus() error {
 	}
 
 	return nil
-}
-
-func (d *CarbonIntensity) Init(props properties.Properties, env runtime.Environment) {
-	d.props = props
-	d.env = env
 }

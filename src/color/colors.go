@@ -1,6 +1,7 @@
 package color
 
 import (
+	"encoding/gob"
 	"fmt"
 	"strconv"
 	"strings"
@@ -8,24 +9,53 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/jandedobbeleer/oh-my-posh/src/cache"
+	"github.com/jandedobbeleer/oh-my-posh/src/generics"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/template"
 )
 
-var TrueColor = true
-
-// String is the interface that wraps ToColor method.
-//
-// ToColor gets the ANSI color code for a given color string.
-// This can include a valid hex color in the format `#FFFFFF`,
-// but also a name of one of the first 16 ANSI colors like `lightBlue`.
-type String interface {
-	ToAnsi(colorString Ansi, isBackground bool) Ansi
+func init() {
+	gob.Register(&Set{})
+	gob.Register((*Ansi)(nil))
+	gob.Register(&Palette{})
+	gob.Register(&Palettes{})
+	gob.Register(&Cycle{})
 }
 
+const (
+	accentColor = "accent_color"
+)
+
+var TrueColor = true
+
+// String converts a color string — a hex color like `#FFFFFF`, or one of the
+// first 16 ANSI color names like `lightBlue` — to an ANSI code.
+type String interface {
+	ToAnsi(colorString Ansi, isBackground bool) Ansi
+	Resolve(colorString Ansi) (Ansi, error)
+}
+
+// Set holds one background/foreground color pair. The two unexported source-tracking
+// fields below add +96 B/op (BenchmarkWriteAnchors) / +32 B/op (BenchmarkWritePlainASCII)
+// versus a Set without them, at identical allocation counts, measured against
+// origin/main with terminal.CaptureRuns off: History.Add allocates a Set per push, and
+// every push now carries two extra Ansi (string header) fields regardless of whether
+// anything reads them. This is accepted, not a bug: the fields are unconditional rather
+// than threading CaptureRuns into this package, which would risk the run-capture and
+// ANSI-only paths drifting apart between builds that enable it and builds that don't.
 type Set struct {
-	Background Ansi `json:"background" toml:"background"`
-	Foreground Ansi `json:"foreground" toml:"foreground"`
+	Background Ansi `json:"background" toml:"background" yaml:"background"`
+	Foreground Ansi `json:"foreground" toml:"foreground" yaml:"foreground"`
+
+	// backgroundSource/foregroundSource carry each channel's resolved SOURCE
+	// form (a #RRGGBB hex, a colour name, accent, transparent, ...) alongside
+	// Background/Foreground's SGR payload. Unexported: they never round-trip
+	// through config (un)marshalling or the gob-encoded device cache, which
+	// only see exported fields, so their presence changes neither. See
+	// History.Add for why they ride on the same entry instead of a second stack.
+	backgroundSource Ansi
+	foregroundSource Ansi
 }
 
 func (c *Set) String() string {
@@ -33,7 +63,7 @@ func (c *Set) String() string {
 }
 
 func (c *Set) ParseString(colors string) {
-	parts := strings.Split(colors, "|")
+	parts := strings.SplitN(colors, "|", 3)
 	if len(parts) != 2 {
 		return
 	}
@@ -48,10 +78,22 @@ func (c *History) Len() int {
 	return len(*c)
 }
 
-func (c *History) Add(background, foreground Ansi) {
+// Add pushes background/foreground (SGR) onto the stack, together with
+// backgroundSource/foregroundSource — each channel's source form from before
+// ToAnsi's SGR conversion, which a later encoder needs because SGR cannot be
+// inverted back to it reliably (the 256-colour downgrade and base-16 codes
+// are lossy).
+//
+// The dedupe decision below compares only background/foreground (SGR), same
+// as before this field existed: under color.TrueColor == false, two distinct
+// source forms can collapse to the same SGR pair, so the decision must not
+// be made on source forms, or it would diverge from this one.
+func (c *History) Add(background, foreground, backgroundSource, foregroundSource Ansi) {
 	colors := &Set{
-		Foreground: foreground,
-		Background: background,
+		Foreground:       foreground,
+		Background:       background,
+		foregroundSource: foregroundSource,
+		backgroundSource: backgroundSource,
 	}
 
 	if c.Len() == 0 {
@@ -92,6 +134,25 @@ func (c *History) Foreground() Ansi {
 	return (*c)[c.Len()-1].Foreground
 }
 
+// BackgroundSource returns the top entry's background source form (see Add);
+// emptyColor when the stack is empty, matching Background.
+func (c *History) BackgroundSource() Ansi {
+	if c.Len() == 0 {
+		return emptyColor
+	}
+
+	return (*c)[c.Len()-1].backgroundSource
+}
+
+// ForegroundSource is BackgroundSource's foreground counterpart.
+func (c *History) ForegroundSource() Ansi {
+	if c.Len() == 0 {
+		return emptyColor
+	}
+
+	return (*c)[c.Len()-1].foregroundSource
+}
+
 // Ansi is an ANSI color code ready to be printed to the console.
 // Example: "38;2;255;255;255", "48;2;255;255;255", "31", "95".
 type Ansi string
@@ -120,7 +181,22 @@ func (c Ansi) ToForeground() Ansi {
 	return c
 }
 
-func (c Ansi) ResolveTemplate(env runtime.Environment) Ansi {
+// ToChannel returns the color code adjusted for the requested channel, converting
+// between the foreground (38;...) and background (48;...) escape payload prefixes.
+func (c Ansi) ToChannel(isBackground bool) Ansi {
+	colorString := c.String()
+
+	switch {
+	case isBackground && strings.HasPrefix(colorString, "38;"):
+		return Ansi("48;" + colorString[3:])
+	case !isBackground && strings.HasPrefix(colorString, "48;"):
+		return Ansi("38;" + colorString[3:])
+	default:
+		return c
+	}
+}
+
+func (c Ansi) ResolveTemplate() Ansi {
 	if c.IsEmpty() {
 		return c
 	}
@@ -129,13 +205,7 @@ func (c Ansi) ResolveTemplate(env runtime.Environment) Ansi {
 		return emptyColor
 	}
 
-	tmpl := &template.Text{
-		Template: string(c),
-		Context:  nil,
-		Env:      env,
-	}
-
-	text, err := tmpl.Render()
+	text, err := template.RenderTrusted(string(c), nil)
 	if err != nil {
 		return Transparent
 	}
@@ -151,28 +221,54 @@ func MakeColors(palette Palette, cacheEnabled bool, accentColor Ansi, env runtim
 	defaultColors := &Defaults{}
 	defaultColors.SetAccentColor(env, accentColor)
 	colors = defaultColors
+
 	if palette != nil {
 		colors = &PaletteColors{ansiColors: colors, palette: palette}
 	}
+
 	if cacheEnabled {
 		colors = &Cached{ansiColors: colors}
 	}
+
 	return
 }
 
-func (d *Defaults) SetAccentColor(env runtime.Environment, defaultColor Ansi) {
-	defer env.Trace(time.Now())
+// unresolvedAccent is the negative marker cached when the OS accent color
+// cannot be resolved, so we don't keep retrying the (expensive) OS query
+// on every prompt render.
+var unresolvedAccent = &Set{}
 
-	// get accent color from session cache first
-	if accent, OK := env.Session().Get("accent_color"); OK {
-		accentColors := &Set{}
-		accentColors.ParseString(accent)
-		d.accent = accentColors
-		return
+func (d *Defaults) SetAccentColor(env runtime.Environment, defaultColor Ansi) {
+	defer log.Trace(time.Now())
+
+	// a gradient accent_color cannot serve as the single accent value; collapse to
+	// its first stop so the cached accent Set never holds a raw gradient string.
+	if defaultColor.IsGradient() {
+		defaultColor = defaultColor.GradientFirst()
 	}
 
-	rgb, err := GetAccentColor(env)
-	if err != nil {
+	// get the resolved OS accent color from the device cache first, regardless
+	// of whether a default was configured, so we never repeat the underlying
+	// OS query (e.g. a DWM registry read) once we know the answer.
+	accent, OK := cache.Device.Get[*Set](accentColor)
+	if !OK {
+		rgb, err := GetAccentColor(env)
+		if err != nil {
+			accent = unresolvedAccent
+		} else {
+			foreground := color.RGB(rgb.R, rgb.G, rgb.B, false)
+			background := color.RGB(rgb.R, rgb.G, rgb.B, true)
+
+			accent = &Set{
+				Foreground: Ansi(foreground.String()),
+				Background: Ansi(background.String()),
+			}
+		}
+
+		cache.Device.Set(accentColor, accent, cache.INFINITE)
+	}
+
+	if accent.Foreground.IsEmpty() && accent.Background.IsEmpty() {
 		d.accent = &Set{
 			Foreground: d.ToAnsi(defaultColor, false),
 			Background: d.ToAnsi(defaultColor, true),
@@ -181,26 +277,47 @@ func (d *Defaults) SetAccentColor(env runtime.Environment, defaultColor Ansi) {
 		return
 	}
 
-	if len(defaultColor) == 0 {
-		return
-	}
-
-	foreground := color.RGB(rgb.R, rgb.G, rgb.B, false)
-	background := color.RGB(rgb.R, rgb.G, rgb.B, true)
-
-	d.accent = &Set{
-		Foreground: Ansi(foreground.String()),
-		Background: Ansi(background.String()),
-	}
-
-	env.Session().Set("accent_color", d.accent.String(), cache.INFINITE)
+	d.accent = accent
 }
 
 type RGB struct {
 	R, G, B uint8
 }
 
-// Defaults is the default AnsiColors implementation.
+// ParseTrueColorRGB parses a 24-bit SGR payload ("38;2;r;g;b" or
+// "48;2;r;g;b") into RGB. It exists for the one color that can't be carried
+// as a hex string: the OS accent color resolves through ToAnsi to this form
+// rather than hex (see Defaults.SetAccentColor building it via gookit's
+// color.RGB), so both a gradient stop resolving "accent" (gradient.go's
+// parseTrueColor, a thin colorful.Color-returning wrapper around this) and
+// the svg package's own Options resolving "accent" (svg/colors.go's
+// ParseTrueColorSGR, an RGB-pointer-returning wrapper) need the same parse.
+// Kept in this package rather than duplicated in each caller so the two
+// never drift out of parity with each other again.
+func ParseTrueColorRGB(c Ansi) (RGB, bool) {
+	parts := strings.Split(c.String(), ";")
+	if len(parts) != 5 || (parts[0] != "38" && parts[0] != "48") || parts[1] != "2" {
+		return RGB{}, false
+	}
+
+	r, err := strconv.ParseUint(parts[2], 10, 8)
+	if err != nil {
+		return RGB{}, false
+	}
+
+	g, err := strconv.ParseUint(parts[3], 10, 8)
+	if err != nil {
+		return RGB{}, false
+	}
+
+	b, err := strconv.ParseUint(parts[4], 10, 8)
+	if err != nil {
+		return RGB{}, false
+	}
+
+	return RGB{R: uint8(r), G: uint8(g), B: uint8(b)}, true
+}
+
 type Defaults struct {
 	accent *Set
 }
@@ -228,18 +345,30 @@ var (
 	}
 )
 
-const (
-	foregroundIndex = 0
-	backgroundIndex = 1
-)
-
 func (d *Defaults) ToAnsi(ansiColor Ansi, isBackground bool) Ansi {
-	if len(ansiColor) == 0 {
+	if ansiColor == "" {
 		return emptyColor
 	}
 
 	if ansiColor.IsTransparent() {
 		return ansiColor
+	}
+
+	// a gradient rides the ANSI plumbing as a plain string; the terminal writer detects
+	// and renders it per cell, so it must never be mangled into hex/256 parsing here.
+	if ansiColor.IsGradient() {
+		return ansiColor
+	}
+
+	if dir, inner, percent, ok := ansiColor.ShadeArgs(); ok {
+		hex, ok := shadeHex(inner, dir, percent)
+		if !ok {
+			log.Errorf("%s: darken()/lighten() only support hex colors and palette references resolving to one; "+
+				"named ANSI/terminal colors have no fixed RGB oh-my-posh can shift, define the color in your palette with a hex value instead", ansiColor)
+			return emptyColor
+		}
+
+		ansiColor = Ansi(hex)
 	}
 
 	if ansiColor == Accent {
@@ -289,15 +418,13 @@ func (d *Defaults) ToAnsi(ansiColor Ansi, isBackground bool) Ansi {
 	return emptyColor
 }
 
-// getAnsiColorFromName returns the color code for a given color name if the name is
-// known ANSI color name.
+func (d *Defaults) Resolve(colorString Ansi) (Ansi, error) {
+	return colorString, nil
+}
+
 func getAnsiColorFromName(colorValue Ansi, isBackground bool) (Ansi, error) {
 	if colorCodes, found := ansiColorCodes[colorValue]; found {
-		if isBackground {
-			return colorCodes[backgroundIndex], nil
-		}
-
-		return colorCodes[foregroundIndex], nil
+		return colorCodes[generics.ToInt[int](isBackground)], nil
 	}
 
 	return "", fmt.Errorf("color name %s does not exist", colorValue)
@@ -316,6 +443,17 @@ type PaletteColors struct {
 }
 
 func (p *PaletteColors) ToAnsi(colorString Ansi, isBackground bool) Ansi {
+	// a gradient string is not a palette key; guard it explicitly so it never round-trips
+	// through palette resolution and reaches the next decorator untouched.
+	if colorString.IsGradient() {
+		return colorString
+	}
+
+	colorString, err := p.palette.resolveShade(colorString)
+	if err != nil {
+		return emptyColor
+	}
+
 	paletteColor, err := p.palette.ResolveColor(colorString)
 	if err != nil {
 		return emptyColor
@@ -326,9 +464,17 @@ func (p *PaletteColors) ToAnsi(colorString Ansi, isBackground bool) Ansi {
 	return ansiColor
 }
 
+func (p *PaletteColors) Resolve(colorString Ansi) (Ansi, error) {
+	colorString, err := p.palette.resolveShade(colorString)
+	if err != nil {
+		return "", err
+	}
+
+	return p.palette.ResolveColor(colorString)
+}
+
 // Cached is the AnsiColors Decorator that does simple color lookup caching.
-// ToColor calls are cheap, but not free, and having a simple cache in
-// has measurable positive effect on performance.
+// ToAnsi calls are cheap but not free, and caching has a measurable positive effect on performance.
 type Cached struct {
 	ansiColors String
 	colorCache map[cachedColorKey]Ansi
@@ -343,11 +489,17 @@ func (c *Cached) ToAnsi(colorString Ansi, isBackground bool) Ansi {
 	if c.colorCache == nil {
 		c.colorCache = make(map[cachedColorKey]Ansi)
 	}
+
 	key := cachedColorKey{colorString, isBackground}
 	if ansiColor, hit := c.colorCache[key]; hit {
 		return ansiColor
 	}
+
 	ansiColor := c.ansiColors.ToAnsi(colorString, isBackground)
 	c.colorCache[key] = ansiColor
 	return ansiColor
+}
+
+func (c *Cached) Resolve(colorString Ansi) (Ansi, error) {
+	return c.ansiColors.Resolve(colorString)
 }

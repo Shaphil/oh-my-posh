@@ -1,7 +1,7 @@
 ---
 id: migrating
 title: PowerShell module
-sidebar_label: ⚰️ PowerShell Module
+sidebar_label: PowerShell Module
 ---
 
 ## Problem statement
@@ -67,15 +67,10 @@ And replace `~/.custom.omp.json` with the location of your theme.
 #### I have an out-of-the-box theme
 
 ```powershell
-oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\jandedobbeleer.omp.json" | Invoke-Expression
+oh-my-posh init pwsh --config "jandedobbeleer" | Invoke-Expression
 ```
 
-Replace `jandedobbeleer.omp.json` with the theme you use.
-
-:::caution
-Only winget and scoop add the environment variable `POSH_THEMES_PATH` automatically. For Homebrew, use
-`$(brew --prefix oh-my-posh)/themes/jandedobbeleer.omp.json`.
-:::
+Replace `jandedobbeleer` with the theme you use.
 
 [init]: https://github.com/JanDeDobbeleer/oh-my-posh/blob/main/src/shell/scripts/omp.ps1
 [idiots]: https://ohmyposh.dev/blog/idiots-everywhere

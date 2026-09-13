@@ -4,6 +4,8 @@ title: Secondary prompt
 sidebar_label: Secondary prompt
 ---
 
+import Config from "@site/src/components/Config.js";
+
 :::info
 This feature only works in `powershell`, `zsh` and `bash` for the time being.
 :::
@@ -17,27 +19,24 @@ Environment variables are available, just like the [`console_title_template`][co
 
 You need to extend or create a custom theme with your secondary prompt override. For example:
 
-```json
-{
-    "$schema": "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json",
-    "blocks": [
-        ...
-    ],
-    "secondary_prompt": {
-        "background": "transparent",
-        "foreground": "#ffffff",
-        "template": "-> "
-    }
-}
-```
+<Config
+  data={{
+    secondary_prompt: {
+      background: "transparent",
+      foreground: "#ffffff",
+      template: "-> ",
+    },
+  }}
+/>
 
-## Properties
+## Options
 
-| Name         | Type     | Description                                                                                                                    |
-| ------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `background` | `string` | [color][colors]                                                                                                                |
-| `foreground` | `string` | [color][colors]                                                                                                                |
-| `template`   | `string` | a go [text/template][go-text-template] template extended with [sprig][sprig] utilizing the properties below - defaults to `> ` |
+| Name                   | Type      | Description                                                                                                                                       |
+| ---------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `background`           | `string`  | [color][colors]                                                                                                                                 |
+| `foreground`           | `string`  | [color][colors]                                                                                                                                 |
+| `template`             | `string`  | a go [text/template][go-text-template] template extended with [sprig][sprig] utilizing the properties below - defaults to `> `                  |
+| `multiline_keepprompt` | `boolean` | when `true`, a multi-line command is kept in a single buffer so the primary prompt stays in place until the whole command is submitted (Zsh only). Continuation lines are part of that buffer and get no secondary prompt, so `template` is not rendered for them. Defaults to `false` |
 
 ## Template ([info][templates])
 

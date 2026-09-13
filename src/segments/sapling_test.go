@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	"github.com/alecthomas/assert"
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 )
 
 func TestSetDir(t *testing.T) {
@@ -18,25 +19,13 @@ func TestSetDir(t *testing.T) {
 		GOOS     string
 	}{
 		{
-			Case:     "In home folder",
-			Expected: "~/sapling",
-			Path:     "/usr/home/sapling/.sl",
-			GOOS:     runtime.LINUX,
-		},
-		{
-			Case:     "Outside home folder",
+			Case:     "Linux",
 			Expected: "/usr/sapling/repo",
 			Path:     "/usr/sapling/repo/.sl",
 			GOOS:     runtime.LINUX,
 		},
 		{
-			Case:     "Windows home folder",
-			Expected: "~\\sapling",
-			Path:     "\\usr\\home\\sapling\\.sl",
-			GOOS:     runtime.WINDOWS,
-		},
-		{
-			Case:     "Windows outside home folder",
+			Case:     "Windows",
 			Expected: "\\usr\\sapling\\repo",
 			Path:     "\\usr\\sapling\\repo\\.sl",
 			GOOS:     runtime.WINDOWS,
@@ -50,11 +39,10 @@ func TestSetDir(t *testing.T) {
 			home = "\\usr\\home"
 		}
 		env.On("Home").Return(home)
-		sl := &Sapling{
-			scm: scm{
-				env: env,
-			},
-		}
+
+		sl := &Sapling{}
+		sl.Init(options.Map{}, env)
+
 		sl.setDir(tc.Path)
 		assert.Equal(t, tc.Expected, sl.Dir, tc.Case)
 	}
@@ -102,13 +90,14 @@ func TestSetCommitContext(t *testing.T) {
 	for _, tc := range cases {
 		env := new(mock.Environment)
 		env.On("RunCommand", "sl", []string{"log", "--limit", "1", "--template", SLCOMMITTEMPLATE}).Return(tc.Output, tc.Error)
+
 		sl := &Sapling{
-			scm: scm{
-				env:     env,
-				command: SAPLINGCOMMAND,
-			},
+			command: SAPLINGCOMMAND,
 		}
+		sl.Init(options.Map{}, env)
+
 		sl.setCommitContext()
+
 		assert.Equal(t, tc.ExpectedHash, sl.Hash, tc.Case)
 		assert.Equal(t, tc.ExpectedShortHash, sl.ShortHash, tc.Case)
 		assert.Equal(t, tc.ExpectedWhen, sl.When, tc.Case)
@@ -123,7 +112,6 @@ func TestShouldDisplay(t *testing.T) {
 		HasSapling bool
 		InRepo     bool
 		Expected   bool
-		Excluded   bool
 	}{
 		{
 			Case: "Sapling not installed",
@@ -131,12 +119,6 @@ func TestShouldDisplay(t *testing.T) {
 		{
 			Case:       "Sapling installed, not in repo",
 			HasSapling: true,
-		},
-		{
-			Case:       "Sapling installed, in repo but ignored",
-			HasSapling: true,
-			InRepo:     true,
-			Excluded:   true,
 		},
 		{
 			Case:       "Sapling installed, in repo",
@@ -156,26 +138,21 @@ func TestShouldDisplay(t *testing.T) {
 		env.On("InWSLSharedDrive").Return(false)
 		env.On("GOOS").Return(runtime.LINUX)
 		env.On("Home").Return("/usr/home/sapling")
-		env.On("DirMatchesOneOf", fileInfo.ParentFolder, []string{"/sapling/repo"}).Return(tc.Excluded)
 		if tc.InRepo {
 			env.On("HasParentFilePath", ".sl", false).Return(fileInfo, nil)
 		} else {
 			env.On("HasParentFilePath", ".sl", false).Return(&runtime.FileInfo{}, errors.New("error"))
 		}
-		sl := &Sapling{
-			scm: scm{
-				env: env,
-				props: &properties.Map{
-					properties.ExcludeFolders: []string{"/sapling/repo"},
-				},
-			},
-		}
+
+		sl := &Sapling{}
+		sl.Init(&options.Map{}, env)
+
 		got := sl.shouldDisplay()
 		assert.Equal(t, tc.Expected, got, tc.Case)
 		if tc.Expected {
-			assert.Equal(t, "/sapling/repo/.sl", sl.workingDir, tc.Case)
-			assert.Equal(t, "/sapling/repo/.sl", sl.rootDir, tc.Case)
-			assert.Equal(t, "/sapling/repo", sl.realDir, tc.Case)
+			assert.Equal(t, "/sapling/repo/.sl", sl.mainSCMDir, tc.Case)
+			assert.Equal(t, "/sapling/repo/.sl", sl.scmDir, tc.Case)
+			assert.Equal(t, "/sapling/repo", sl.repoRootDir, tc.Case)
 			assert.Equal(t, "repo", sl.RepoName, tc.Case)
 		}
 	}
@@ -184,9 +161,9 @@ func TestShouldDisplay(t *testing.T) {
 func TestSetHeadContext(t *testing.T) {
 	cases := []struct {
 		Case        string
-		FetchStatus bool
 		Output      string
 		Expected    string
+		FetchStatus bool
 	}{
 		{
 			Case: "Do not fetch status",
@@ -232,17 +209,20 @@ func TestSetHeadContext(t *testing.T) {
 		env := new(mock.Environment)
 		env.On("RunCommand", "sl", []string{"log", "--limit", "1", "--template", SLCOMMITTEMPLATE}).Return(output, nil)
 		env.On("RunCommand", "sl", []string{"status"}).Return(tc.Output, nil)
+
 		sl := &Sapling{
-			scm: scm{
-				env: env,
-				props: &properties.Map{
-					FetchStatus: tc.FetchStatus,
-				},
-				command: SAPLINGCOMMAND,
-			},
+			command: SAPLINGCOMMAND,
 		}
+		sl.Init(options.Map{}, env)
+
+		// the status probe is derived from template references now: a config
+		// that renders .Working fetches, one that does not skips the scan
+		if tc.FetchStatus {
+			sl.SetReferencedFields(template.RefSet{Fields: saplingStatusFields, Analyzable: true})
+		}
+
 		sl.setHeadContext()
-		got := sl.Working.String()
+		got := sl.Working.String().String()
 		assert.Equal(t, tc.Expected, got, tc.Case)
 	}
 }

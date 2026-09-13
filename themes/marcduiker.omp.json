@@ -9,7 +9,7 @@
           "foreground": "#262b44",
           "leading_diamond": "\ue0b6",
           "powerline_symbol": "\ue0b0",
-          "properties": {
+          "options": {
             "style": "folder"
           },
           "style": "diamond",
@@ -27,11 +27,6 @@
           ],
           "foreground": "#262b44",
           "powerline_symbol": "\ue0b0",
-          "properties": {
-            "fetch_stash_count": true,
-            "fetch_status": true,
-            "fetch_upstream_icon": true
-          },
           "style": "powerline",
           "template": " {{ .UpstreamIcon }}{{ .HEAD }}{{if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Staging.Changed }} \uf046 {{ .Staging.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Working.Changed }} \uf044 {{ .Working.String }}{{ end }}{{ if gt .StashCount 0 }} \ueb4b {{ .StashCount }}{{ end }} ",
           "type": "git"
@@ -43,7 +38,7 @@
           ],
           "foreground": "#ffffff",
           "leading_diamond": "<transparent,background>\ue0b0</>",
-          "properties": {
+          "options": {
             "always_enabled": true
           },
           "style": "diamond",
@@ -56,5 +51,5 @@
     }
   ],
   "final_space": true,
-  "version": 2
+  "version": 4
 }

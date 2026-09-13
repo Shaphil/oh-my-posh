@@ -1,21 +1,44 @@
 package config
 
 import (
+	"github.com/jandedobbeleer/oh-my-posh/src/cache"
+	"github.com/jandedobbeleer/oh-my-posh/src/cli/upgrade"
 	"github.com/jandedobbeleer/oh-my-posh/src/color"
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-	"github.com/jandedobbeleer/oh-my-posh/src/segments"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 )
 
-func Default(env runtime.Environment, warning bool) *Config {
+const (
+	paletteBlack          = "p:black"
+	paletteBlue           = "p:blue"
+	paletteGreen          = "p:green"
+	paletteOrange         = "p:orange"
+	paletteWhite          = "p:white"
+	paletteYellow         = "p:yellow"
+	backgroundTransparent = "transparent"
+
+	// Mirror segment option keys locally rather than importing segments,
+	// which drags its full transitive dep tree into the wasm build.
+	branchTemplate      options.Option = "branch_template"
+	homeEnabled         options.Option = "home_enabled"
+	fetchPackageManager options.Option = "fetch_package_manager"
+	displayMode         options.Option = "display_mode"
+	fetchVirtualEnv     options.Option = "fetch_virtual_env"
+	dirLength           options.Option = "dir_length"
+	folderSeparatorIcon options.Option = "folder_separator_icon"
+)
+
+func Default(configError error) *Config {
 	exitBackgroundTemplate := "{{ if gt .Code 0 }}p:red{{ end }}"
 	exitTemplate := " {{ if gt .Code 0 }}\uf00d{{ else }}\uf00c{{ end }} "
-	if warning {
+
+	if configError != nil && configError != ErrNoConfig {
 		exitBackgroundTemplate = "p:red"
-		exitTemplate = " CONFIG ERROR "
+		exitTemplate = configError.Error()
 	}
+
 	cfg := &Config{
-		Version:    2,
+		hash:       1234567890, // placeholder hash value
+		Version:    4,
 		FinalSpace: true,
 		Blocks: []*Block{
 			{
@@ -27,18 +50,18 @@ func Default(env runtime.Environment, warning bool) *Config {
 						Style:           Diamond,
 						LeadingDiamond:  "\ue0b6",
 						TrailingDiamond: "\ue0b0",
-						Foreground:      "p:black",
-						Background:      "p:yellow",
+						Foreground:      paletteBlack,
+						Background:      paletteYellow,
 						Template:        " {{ if .SSHSession }}\ueba9 {{ end }}{{ .UserName }} ",
 					},
 					{
 						Type:            PATH,
 						Style:           Powerline,
 						PowerlineSymbol: "\ue0b0",
-						Foreground:      "p:white",
-						Background:      "p:orange",
-						Properties: properties.Map{
-							properties.Style: "folder",
+						Foreground:      paletteWhite,
+						Background:      paletteOrange,
+						Options: options.Map{
+							options.Style: "folder",
 						},
 						Template: " \uea83 {{ path .Path .Location }} ",
 					},
@@ -46,8 +69,8 @@ func Default(env runtime.Environment, warning bool) *Config {
 						Type:            GIT,
 						Style:           Powerline,
 						PowerlineSymbol: "\ue0b0",
-						Foreground:      "p:black",
-						Background:      "p:green",
+						Foreground:      paletteBlack,
+						Background:      paletteGreen,
 						BackgroundTemplates: []string{
 							"{{ if or (.Working.Changed) (.Staging.Changed) }}p:yellow{{ end }}",
 							"{{ if and (gt .Ahead 0) (gt .Behind 0) }}p:red{{ end }}",
@@ -59,10 +82,8 @@ func Default(env runtime.Environment, warning bool) *Config {
 							"{{ if and (gt .Ahead 0) (gt .Behind 0) }}p:white{{ end }}",
 							"{{ if gt .Ahead 0 }}p:white{{ end }}",
 						},
-						Properties: properties.Map{
-							segments.BranchMaxLength:   25,
-							segments.FetchStatus:       true,
-							segments.FetchUpstreamIcon: true,
+						Options: options.Map{
+							branchTemplate: "{{ trunc 25 .Branch }}",
 						},
 						Template: " {{ if .UpstreamURL }}{{ url .UpstreamIcon .UpstreamURL }} {{ end }}{{ .HEAD }}{{if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }} \uf044 {{ .Working.String }}{{ end }}{{ if .Staging.Changed }} \uf046 {{ .Staging.String }}{{ end }} ", //nolint:lll
 					},
@@ -70,8 +91,8 @@ func Default(env runtime.Environment, warning bool) *Config {
 						Type:            ROOT,
 						Style:           Powerline,
 						PowerlineSymbol: "\ue0b0",
-						Foreground:      "p:white",
-						Background:      "p:yellow",
+						Foreground:      paletteWhite,
+						Background:      paletteYellow,
 						Template:        " \uf0e7 ",
 					},
 					{
@@ -79,13 +100,13 @@ func Default(env runtime.Environment, warning bool) *Config {
 						Style:           Diamond,
 						LeadingDiamond:  "<transparent,background>\ue0b0</>",
 						TrailingDiamond: "\ue0b4",
-						Foreground:      "p:white",
-						Background:      "p:blue",
+						Foreground:      paletteWhite,
+						Background:      paletteBlue,
 						BackgroundTemplates: []string{
 							exitBackgroundTemplate,
 						},
-						Properties: properties.Map{
-							properties.AlwaysEnabled: true,
+						Options: options.Map{
+							options.AlwaysEnabled: true,
 						},
 						Template: exitTemplate,
 					},
@@ -97,49 +118,45 @@ func Default(env runtime.Environment, warning bool) *Config {
 					{
 						Type:       NODE,
 						Style:      Plain,
-						Foreground: "p:green",
-						Background: "transparent",
+						Foreground: paletteGreen,
+						Background: backgroundTransparent,
 						Template:   "\ue718 ",
-						Properties: properties.Map{
-							segments.HomeEnabled:         false,
-							segments.FetchPackageManager: false,
-							segments.DisplayMode:         "files",
+						Options: options.Map{
+							homeEnabled:         false,
+							fetchPackageManager: false,
+							displayMode:         "files",
 						},
 					},
 					{
 						Type:       GOLANG,
 						Style:      Plain,
-						Foreground: "p:blue",
-						Background: "transparent",
+						Foreground: paletteBlue,
+						Background: backgroundTransparent,
 						Template:   "\ue626 ",
-						Properties: properties.Map{
-							properties.FetchVersion: false,
-						},
 					},
 					{
 						Type:       PYTHON,
 						Style:      Plain,
-						Foreground: "p:yellow",
-						Background: "transparent",
+						Foreground: paletteYellow,
+						Background: backgroundTransparent,
 						Template:   "\ue235 ",
-						Properties: properties.Map{
-							properties.FetchVersion:  false,
-							segments.DisplayMode:     "files",
-							segments.FetchVirtualEnv: false,
+						Options: options.Map{
+							displayMode:     "files",
+							fetchVirtualEnv: false,
 						},
 					},
 					{
 						Type:       SHELL,
 						Style:      Plain,
-						Foreground: "p:white",
-						Background: "transparent",
+						Foreground: paletteWhite,
+						Background: backgroundTransparent,
 						Template:   "in <p:blue><b>{{ .Name }}</b></> ",
 					},
 					{
 						Type:       TIME,
 						Style:      Plain,
-						Foreground: "p:white",
-						Background: "transparent",
+						Foreground: paletteWhite,
+						Background: backgroundTransparent,
 						Template:   "at <p:blue><b>{{ .CurrentDate | date \"15:04:05\" }}</b></>",
 					},
 				},
@@ -156,13 +173,13 @@ func Default(env runtime.Environment, warning bool) *Config {
 			"yellow": "#F3AE35",
 		},
 		SecondaryPrompt: &Segment{
-			Foreground: "p:black",
-			Background: "transparent",
+			Foreground: paletteBlack,
+			Background: backgroundTransparent,
 			Template:   "<p:yellow,transparent>\ue0b6</><,p:yellow> > </><p:yellow,transparent>\ue0b0</> ",
 		},
 		TransientPrompt: &Segment{
-			Foreground: "p:black",
-			Background: "transparent",
+			Foreground: paletteBlack,
+			Background: backgroundTransparent,
 			Template:   "<p:yellow,transparent>\ue0b6</><,p:yellow> {{ .Folder }} </><p:yellow,transparent>\ue0b0</> ",
 		},
 		Tooltips: []*Segment{
@@ -171,11 +188,11 @@ func Default(env runtime.Environment, warning bool) *Config {
 				Style:           Diamond,
 				LeadingDiamond:  "\ue0b0",
 				TrailingDiamond: "\ue0b4",
-				Foreground:      "p:white",
-				Background:      "p:orange",
+				Foreground:      paletteWhite,
+				Background:      paletteOrange,
 				Template:        " \ue7ad {{ .Profile }}{{ if .Region }}@{{ .Region }}{{ end }} ",
-				Properties: properties.Map{
-					properties.DisplayDefault: true,
+				Options: options.Map{
+					options.DisplayDefault: true,
 				},
 				Tips: []string{"aws"},
 			},
@@ -184,16 +201,110 @@ func Default(env runtime.Environment, warning bool) *Config {
 				Style:           Diamond,
 				LeadingDiamond:  "\ue0b0",
 				TrailingDiamond: "\ue0b4",
-				Foreground:      "p:white",
-				Background:      "p:blue",
+				Foreground:      paletteWhite,
+				Background:      paletteBlue,
 				Template:        " \uebd8 {{ .Name }} ",
-				Properties: properties.Map{
-					properties.DisplayDefault: true,
+				Options: options.Map{
+					options.DisplayDefault: true,
 				},
 				Tips: []string{"az"},
 			},
 		},
+		Upgrade: &upgrade.Config{
+			Source:   upgrade.CDN,
+			Interval: cache.ONEWEEK,
+		},
 	}
-	cfg.env = env
+
 	return cfg
+}
+
+func Claude() *Config {
+	return statuslineCLIConfig(1234567890, CLAUDE, " \U000f0bc9 {{ .Model.DisplayName }} \uf2d0 {{ .TokenGauge }} ")
+}
+
+func CopilotCLI() *Config {
+	return statuslineCLIConfig(1234567891, COPILOTCLI, " \uec1e {{ .Model.DisplayName }} \uf2d0 {{ .TokenGauge }} ")
+}
+
+func Antigravity() *Config {
+	return statuslineCLIConfig(1234567892, ANTIGRAVITY, " \uf135 {{ .Model.DisplayName }} \uf2d0 {{ .TokenGauge }} ")
+}
+
+// The left block is always PATH + GIT; the right block contains a single
+// segment of the given type and template.
+func statuslineCLIConfig(hash uint64, segmentType SegmentType, template string) *Config {
+	return &Config{
+		hash:    hash,
+		Version: 4,
+		Blocks: []*Block{
+			{
+				Type:      Prompt,
+				Alignment: Left,
+				Segments: []*Segment{
+					{
+						Type:           PATH,
+						Style:          Diamond,
+						LeadingDiamond: "\ue0b6",
+						Foreground:     paletteWhite,
+						Background:     paletteOrange,
+						Options: options.Map{
+							dirLength:           3,
+							folderSeparatorIcon: "\ue0bb",
+							options.Style:       "fish",
+						},
+						Template: "{{ if .Segments.Git.Dir }} \uf1d2 <i><b>{{ .Segments.Git.RepoName }}{{ if .Segments.Git.IsWorkTree }} \ue21c{{ end }}</b></i>{{ $rel :=  .Segments.Git.RelativeDir }}{{ if $rel }} \ueaf7 {{ .Format $rel }}{{ end }}{{ else }} \uea83 {{ path .Path .Location }}{{ end }} ", //nolint:lll
+					},
+					{
+						Type:       GIT,
+						Style:      Plain,
+						Foreground: paletteBlack,
+						Background: paletteGreen,
+						BackgroundTemplates: []string{
+							"{{ if or (.Working.Changed) (.Staging.Changed) }}p:yellow{{ end }}",
+							"{{ if and (gt .Ahead 0) (gt .Behind 0) }}p:red{{ end }}",
+							"{{ if gt .Ahead 0 }}#49416D{{ end }}",
+							"{{ if gt .Behind 0 }}#7A306C{{ end }}",
+						},
+						ForegroundTemplates: []string{
+							"{{ if or (.Working.Changed) (.Staging.Changed) }}p:black{{ end }}",
+							"{{ if or (gt .Ahead 0) (gt .Behind 0) }}p:white{{ end }}",
+						},
+						Template: " {{ if .UpstreamURL }}{{ url .UpstreamIcon .UpstreamURL }} {{ end }}{{ .HEAD }}{{if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }} \uf044 {{ nospace .Working.String }}{{ end }}{{ if .Staging.Changed }} \uf046 {{ .Staging.String }}{{ end }} ", //nolint:lll
+					},
+					{
+						Type:       TEXT,
+						Style:      Plain,
+						Background: backgroundTransparent,
+						Foreground: color.ParentBackground,
+						Template:   "\ue0b0",
+					},
+				},
+			},
+			{
+				Type:      Prompt,
+				Alignment: Right,
+				Segments: []*Segment{
+					{
+						Type:            segmentType,
+						Style:           Diamond,
+						LeadingDiamond:  "\ue0b6",
+						TrailingDiamond: "\ue0b4",
+						Foreground:      paletteBlack,
+						Background:      paletteBlue,
+						Template:        template,
+					},
+				},
+			},
+		},
+		Palette: color.Palette{
+			"black":  "#262B44",
+			"blue":   "#4B95E9",
+			"green":  "#59C9A5",
+			"orange": "#F07623",
+			"red":    "#D81E5B",
+			"white":  "#E0DEF4",
+			"yellow": "#F3AE35",
+		},
+	}
 }

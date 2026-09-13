@@ -5,35 +5,27 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
 )
 
 type Azd struct {
-	props properties.Properties
-	env   runtime.Environment
-
-	azdConfig
+	Base
+	AzdConfig
 }
 
-type azdConfig struct {
-	Version            int    `json:"version"`
+type AzdConfig struct {
 	DefaultEnvironment string `json:"defaultEnvironment"`
+	Version            int    `json:"version"`
 }
 
 func (t *Azd) Template() string {
 	return " \uebd8 {{ .DefaultEnvironment }} "
 }
 
-func (t *Azd) Init(props properties.Properties, env runtime.Environment) {
-	t.props = props
-	t.env = env
-}
-
 func (t *Azd) Enabled() bool {
 	var parentFilePath string
 
-	folders := t.props.GetStringArray(LanguageFolders, []string{".azure"})
+	folders := t.options.StringArray(LanguageFolders, []string{".azure"})
 	for _, folder := range folders {
 		if file, err := t.env.HasParentFilePath(folder, false); err == nil {
 			parentFilePath = file.ParentFolder
@@ -41,8 +33,8 @@ func (t *Azd) Enabled() bool {
 		}
 	}
 
-	if len(parentFilePath) == 0 {
-		t.env.Debug("no .azure folder found in parent directories")
+	if parentFilePath == "" {
+		log.Debug("no .azure folder found in parent directories")
 		return false
 	}
 
@@ -63,16 +55,16 @@ func (t *Azd) Enabled() bool {
 }
 
 func (t *Azd) TryReadConfigJSON(file string) bool {
-	if len(file) == 0 {
+	if file == "" {
 		return false
 	}
 
 	content := t.env.FileContent(file)
-	var config azdConfig
+	var config AzdConfig
 	if err := json.Unmarshal([]byte(content), &config); err != nil {
 		return false
 	}
 
-	t.azdConfig = config
+	t.AzdConfig = config
 	return true
 }

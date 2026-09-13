@@ -2,7 +2,6 @@ package segments
 
 import "strings"
 
-// FossilStatus represents part of the status of a Svn repository
 type FossilStatus struct {
 	ScmStatus
 }
@@ -27,41 +26,45 @@ const (
 )
 
 type Fossil struct {
-	scm
-
 	Status *FossilStatus
 	Branch string
+	Scm
 }
 
 func (f *Fossil) Template() string {
 	return " \ue725 {{.Branch}} {{.Status.String}} "
 }
 
+// Enabled has no Activation gate (Base's Always applies): fossil detection
+// runs `fossil status` and lets the command decide, rather than searching
+// for a checkout marker (.fslckout/_FOSSIL_) - there is no exact upward
+// marker search to lift into a gate.
 func (f *Fossil) Enabled() bool {
 	if !f.hasCommand(FOSSILCOMMAND) {
 		return false
 	}
+
 	// run fossil command
 	output, err := f.env.RunCommand(f.command, "status")
 	if err != nil {
 		return false
 	}
+
 	f.Status = &FossilStatus{}
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if len(line) == 0 {
+	lines := strings.SplitSeq(output, "\n")
+
+	for line := range lines {
+		key, value, found := strings.Cut(line, " ")
+		if !found {
 			continue
 		}
-		context := strings.SplitN(line, " ", 2)
-		if len(context) < 2 {
-			continue
-		}
-		switch context[0] {
+		switch key {
 		case "tags:":
-			f.Branch = strings.TrimSpace(context[1])
+			f.Branch = strings.TrimSpace(value)
 		default:
-			f.Status.add(context[0])
+			f.Status.add(key)
 		}
 	}
+
 	return true
 }

@@ -2,27 +2,30 @@ package prompt
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/jandedobbeleer/oh-my-posh/src/cache"
+	"github.com/jandedobbeleer/oh-my-posh/src/color"
 	"github.com/jandedobbeleer/oh-my-posh/src/config"
+	"github.com/jandedobbeleer/oh-my-posh/src/maps"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
 	"github.com/jandedobbeleer/oh-my-posh/src/shell"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 	"github.com/jandedobbeleer/oh-my-posh/src/terminal"
 
 	"github.com/stretchr/testify/assert"
-	testify_ "github.com/stretchr/testify/mock"
 )
 
 func TestCanWriteRPrompt(t *testing.T) {
 	cases := []struct {
-		Case               string
-		Expected           bool
-		TerminalWidth      int
 		TerminalWidthError error
+		Case               string
+		TerminalWidth      int
 		PromptLength       int
 		RPromptLength      int
+		Expected           bool
 	}{
 		{Case: "Width Error", Expected: false, TerminalWidthError: errors.New("burp")},
 		{Case: "Terminal > Prompt enabled", Expected: true, TerminalWidth: 200, PromptLength: 100, RPromptLength: 10},
@@ -56,16 +59,14 @@ func TestPrintPWD(t *testing.T) {
 		Pwd      string
 		Shell    string
 		Cygwin   bool
-		OSC99    bool
 	}{
 		{Case: "Empty PWD"},
 		{Case: "OSC99", Config: terminal.OSC99, Expected: "\x1b]9;9;pwd\x1b\\"},
 		{Case: "OSC99 - Elvish", Config: terminal.OSC99, Shell: shell.ELVISH},
 		{Case: "OSC7", Config: terminal.OSC7, Expected: "\x1b]7;file://host/pwd\x1b\\"},
 		{Case: "OSC51", Config: terminal.OSC51, Expected: "\x1b]51;Auser@host:pwd\x1b\\"},
-		{Case: "Deprecated OSC99", OSC99: true, Expected: "\x1b]9;9;pwd\x1b\\"},
 		{Case: "Template (empty)", Config: "{{ if eq .Shell \"pwsh\" }}osc7{{ end }}"},
-		{Case: "Template (non empty)", Config: "{{ if eq .Shell \"shell\" }}osc7{{ end }}", Expected: "\x1b]7;file://host/pwd\x1b\\"},
+		{Case: "Template (non empty)", Shell: shell.GENERIC, Config: "{{ if eq .Shell \"shell\" }}osc7{{ end }}", Expected: "\x1b]7;file://host/pwd\x1b\\"},
 		{
 			Case:     "OSC99 Cygwin",
 			Pwd:      `C:\Users\user\Documents\GitHub\oh-my-posh`,
@@ -83,7 +84,7 @@ func TestPrintPWD(t *testing.T) {
 
 	for _, tc := range cases {
 		env := new(mock.Environment)
-		if len(tc.Pwd) == 0 {
+		if tc.Pwd == "" {
 			tc.Pwd = "pwd"
 		}
 
@@ -91,21 +92,102 @@ func TestPrintPWD(t *testing.T) {
 		env.On("User").Return("user")
 		env.On("Shell").Return(tc.Shell)
 		env.On("IsCygwin").Return(tc.Cygwin)
+		env.On("IsWsl").Return(false)
 		env.On("Host").Return("host", nil)
-		env.On("DebugF", testify_.Anything, testify_.Anything).Return(nil)
-		env.On("TemplateCache").Return(&cache.Template{
-			Env:   make(map[string]string),
-			Shell: "shell",
-		})
-		env.On("Flags").Return(&runtime.Flags{})
+
+		template.Cache = &cache.Template{
+			Shell:    tc.Shell,
+			Segments: maps.NewConcurrent[any](),
+		}
+		template.Init(env, nil, nil)
 
 		terminal.Init(shell.GENERIC)
 
 		engine := &Engine{
 			Env: env,
 			Config: &config.Config{
-				PWD:   tc.Config,
-				OSC99: tc.OSC99,
+				PWD: tc.Config,
+			},
+		}
+
+		engine.pwd()
+		got := engine.string()
+
+		assert.Equal(t, tc.Expected, got, tc.Case)
+	}
+}
+
+func TestPrintPWDWSL(t *testing.T) {
+	cases := []struct {
+		Case     string
+		Expected string
+		Config   string
+		Pwd      string
+		Shell    string
+		WinPath  string
+		IsWsl    bool
+	}{
+		{
+			Case:     "OSC99 WSL",
+			Pwd:      "/home/user/projects",
+			Config:   terminal.OSC99,
+			IsWsl:    true,
+			WinPath:  "//wsl.localhost/Ubuntu/home/user/projects",
+			Expected: "\x1b]9;9;//wsl.localhost/Ubuntu/home/user/projects\x1b\\",
+		},
+		{
+			Case:     "OSC99 Not WSL",
+			Pwd:      "/home/user/projects",
+			Config:   terminal.OSC99,
+			IsWsl:    false,
+			Expected: "\x1b]9;9;/home/user/projects\x1b\\",
+		},
+		{
+			Case:     "OSC7 WSL (with conversion)",
+			Pwd:      "/home/user/projects",
+			Config:   terminal.OSC7,
+			IsWsl:    true,
+			WinPath:  "//wsl.localhost/Ubuntu/home/user/projects",
+			Expected: "\x1b]7;file://host///wsl.localhost/Ubuntu/home/user/projects\x1b\\",
+		},
+		{
+			Case:     "OSC51 WSL (with conversion)",
+			Pwd:      "/home/user/projects",
+			Config:   terminal.OSC51,
+			IsWsl:    true,
+			WinPath:  "//wsl.localhost/Ubuntu/home/user/projects",
+			Expected: "\x1b]51;Auser@host://wsl.localhost/Ubuntu/home/user/projects\x1b\\",
+		},
+	}
+
+	for _, tc := range cases {
+		env := new(mock.Environment)
+		env.On("Pwd").Return(tc.Pwd)
+		env.On("User").Return("user")
+		env.On("Shell").Return(tc.Shell)
+		env.On("IsCygwin").Return(false)
+		env.On("IsWsl").Return(tc.IsWsl)
+		env.On("Host").Return("host", nil)
+
+		if tc.IsWsl {
+			if tc.WinPath == "" {
+				tc.WinPath = tc.Pwd
+			}
+			env.On("ConvertToWindowsPath", tc.Pwd).Return(tc.WinPath)
+		}
+
+		template.Cache = &cache.Template{
+			Shell:    tc.Shell,
+			Segments: maps.NewConcurrent[any](),
+		}
+		template.Init(env, nil, nil)
+
+		terminal.Init(shell.GENERIC)
+
+		engine := &Engine{
+			Env: env,
+			Config: &config.Config{
+				PWD: tc.Config,
 			},
 		}
 
@@ -117,21 +199,25 @@ func TestPrintPWD(t *testing.T) {
 }
 
 func BenchmarkEngineRender(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		engineRender()
 	}
 }
 
 func engineRender() {
-	env := &runtime.Terminal{}
-	env.Init()
-	defer env.Close()
+	cfg := config.Load("")
 
-	cfg := config.Load(env)
+	env := &runtime.Terminal{}
+	env.Init(nil)
+
+	template.Cache = &cache.Template{
+		Segments: maps.NewConcurrent[any](),
+	}
+	template.Init(env, nil, nil)
 
 	terminal.Init(shell.GENERIC)
-	terminal.BackgroundColor = cfg.TerminalBackground.ResolveTemplate(env)
-	terminal.Colors = cfg.MakeColors()
+	terminal.BackgroundColor = cfg.TerminalBackground.ResolveTemplate()
+	terminal.Colors = cfg.MakeColors(env)
 
 	engine := &Engine{
 		Config: cfg,
@@ -141,21 +227,15 @@ func engineRender() {
 	engine.Primary()
 }
 
-func BenchmarkEngineRenderPalette(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		engineRender()
-	}
-}
-
 func TestGetTitle(t *testing.T) {
 	cases := []struct {
 		Template      string
-		Root          bool
 		User          string
 		Cwd           string
 		PathSeparator string
 		ShellName     string
 		Expected      string
+		Root          bool
 	}{
 		{
 			Template:      "{{.Env.USERDOMAIN}} :: {{.PWD}}{{if .Root}} :: Admin{{end}} :: {{.Shell}}",
@@ -187,21 +267,21 @@ func TestGetTitle(t *testing.T) {
 		env.On("Pwd").Return(tc.Cwd)
 		env.On("Home").Return("/usr/home")
 		env.On("PathSeparator").Return(tc.PathSeparator)
-		env.On("DebugF", testify_.Anything, testify_.Anything).Return(nil)
-		env.On("Flags").Return(&runtime.Flags{})
-		env.On("TemplateCache").Return(&cache.Template{
-			Env: map[string]string{
-				"USERDOMAIN": "MyCompany",
-			},
+		env.On("Getenv", "USERDOMAIN").Return("MyCompany")
+		env.On("Shell").Return(tc.ShellName)
+
+		terminal.Init(shell.GENERIC)
+
+		template.Cache = &cache.Template{
 			Shell:    tc.ShellName,
 			UserName: "MyUser",
 			Root:     tc.Root,
 			HostName: "MyHost",
 			PWD:      tc.Cwd,
 			Folder:   "vagrant",
-		})
-
-		terminal.Init(shell.GENERIC)
+			Segments: maps.NewConcurrent[any](),
+		}
+		template.Init(env, nil, nil)
 
 		engine := &Engine{
 			Config: &config.Config{
@@ -220,12 +300,12 @@ func TestGetTitle(t *testing.T) {
 func TestGetConsoleTitleIfGethostnameReturnsError(t *testing.T) {
 	cases := []struct {
 		Template      string
-		Root          bool
 		User          string
 		Cwd           string
 		PathSeparator string
 		ShellName     string
 		Expected      string
+		Root          bool
 	}{
 		{
 			Template:      "Not using Host only {{.UserName}} and {{.Shell}}",
@@ -251,19 +331,19 @@ func TestGetConsoleTitleIfGethostnameReturnsError(t *testing.T) {
 		env := new(mock.Environment)
 		env.On("Pwd").Return(tc.Cwd)
 		env.On("Home").Return("/usr/home")
-		env.On("DebugF", testify_.Anything, testify_.Anything).Return(nil)
-		env.On("Flags").Return(&runtime.Flags{})
-		env.On("TemplateCache").Return(&cache.Template{
-			Env: map[string]string{
-				"USERDOMAIN": "MyCompany",
-			},
+		env.On("Getenv", "USERDOMAIN").Return("MyCompany")
+		env.On("Shell").Return(tc.ShellName)
+
+		terminal.Init(shell.GENERIC)
+
+		template.Cache = &cache.Template{
 			Shell:    tc.ShellName,
 			UserName: "MyUser",
 			Root:     tc.Root,
 			HostName: "",
-		})
-
-		terminal.Init(shell.GENERIC)
+			Segments: maps.NewConcurrent[any](),
+		}
+		template.Init(env, nil, nil)
 
 		engine := &Engine{
 			Config: &config.Config{
@@ -276,5 +356,118 @@ func TestGetConsoleTitleIfGethostnameReturnsError(t *testing.T) {
 		got := terminal.FormatTitle(title)
 
 		assert.Equal(t, tc.Expected, got)
+	}
+}
+
+func TestShouldFill(t *testing.T) {
+	// terminal.Plain is a package-level global. Restore it so the tests that run
+	// after this one are not silently switched into plain mode.
+	t.Cleanup(func() { terminal.Plain = false })
+
+	cases := []struct {
+		Case           string
+		Overflow       config.Overflow
+		ExpectedFiller string
+		Block          config.Block
+		Padding        int
+		ExpectedBool   bool
+	}{
+		{
+			Case:           "Plain single character with no padding",
+			Padding:        0,
+			ExpectedFiller: "",
+			ExpectedBool:   true,
+			Block: config.Block{
+				Overflow: config.Hide,
+				Filler:   "-",
+			},
+		},
+		{
+			Case:           "Plain single character with 1 padding",
+			Padding:        1,
+			ExpectedFiller: "-",
+			ExpectedBool:   true,
+			Block: config.Block{
+				Overflow: config.Hide,
+				Filler:   "-",
+			},
+		},
+		{
+			Case:           "Plain single character with lots of padding",
+			Padding:        200,
+			ExpectedFiller: strings.Repeat("-", 200),
+			ExpectedBool:   true,
+			Block: config.Block{
+				Overflow: config.Hide,
+				Filler:   "-",
+			},
+		},
+		{
+			Case:           "Plain multi-character with some padding",
+			Padding:        20,
+			ExpectedFiller: strings.Repeat("-^-", 6) + "  ",
+			ExpectedBool:   true,
+			Block: config.Block{
+				Overflow: config.Hide,
+				Filler:   "-^-",
+			},
+		},
+		{
+			Case:           "Template conditional on overflow with no overflow",
+			Padding:        3,
+			ExpectedFiller: strings.Repeat("X", 3),
+			ExpectedBool:   true,
+			Block: config.Block{
+				Overflow: config.Hide,
+				Filler:   "{{ if .Overflow -}} O {{- else -}} X {{- end }}",
+			},
+		},
+		{
+			Case:           "Template conditional on overflow with an overflow",
+			Overflow:       config.Break,
+			Padding:        3,
+			ExpectedFiller: strings.Repeat("O", 3),
+			ExpectedBool:   true,
+			Block: config.Block{
+				Overflow: config.Hide,
+				Filler:   "{{ if .Overflow -}} O {{- else -}} X {{- end }}",
+			},
+		},
+		{
+			Case:           "Template conditional on overflow break",
+			Overflow:       config.Break,
+			Padding:        3,
+			ExpectedFiller: strings.Repeat("O", 3),
+			ExpectedBool:   true,
+			Block: config.Block{
+				Overflow: config.Break,
+				Filler:   `{{ if eq .Overflow "break" -}} O {{- else -}} X {{- end }}`,
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		env := new(mock.Environment)
+		env.On("Shell").Return(shell.GENERIC)
+
+		engine := &Engine{
+			Env:      env,
+			Overflow: tc.Overflow,
+		}
+
+		template.Cache = &cache.Template{
+			Shell:    shell.GENERIC,
+			Segments: maps.NewConcurrent[any](),
+		}
+		template.Init(env, nil, nil)
+
+		terminal.Init(shell.GENERIC)
+		terminal.Plain = true
+		terminal.Colors = &color.Defaults{}
+
+		gotFiller, _, gotBool := engine.shouldFill(tc.Block.Filler, tc.Padding)
+
+		assert.Equal(t, tc.ExpectedFiller, gotFiller, tc.Case)
+		assert.Equal(t, tc.ExpectedBool, gotBool, tc.Case)
 	}
 }

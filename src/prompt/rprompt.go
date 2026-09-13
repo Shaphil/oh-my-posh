@@ -1,9 +1,15 @@
 package prompt
 
 import (
+	"github.com/jandedobbeleer/oh-my-posh/src/cache"
 	"github.com/jandedobbeleer/oh-my-posh/src/config"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/shell"
+)
+
+const (
+	RPromptKey       = "rprompt"
+	RPromptLengthKey = "rprompt_length"
 )
 
 func (e *Engine) RPrompt() string {
@@ -22,18 +28,23 @@ func (e *Engine) RPrompt() string {
 		return ""
 	}
 
-	rprompt.Init(e.Env)
+	text, length := e.writeBlockSegments(rprompt)
 
-	if !rprompt.Enabled() {
+	// do not print anything when we don't have any text
+	if length == 0 {
 		return ""
 	}
 
-	text, length := e.renderBlockSegments(rprompt)
 	e.rpromptLength = length
 
 	if e.Env.Shell() == shell.ELVISH && e.Env.GOOS() != runtime.WINDOWS {
 		// Workaround to align with a right-aligned block on non-Windows systems.
 		text += " "
+	}
+
+	if !e.Config.ToolTipsAction.IsDefault() {
+		cache.Session.Set(RPromptKey, text, cache.INFINITE)
+		cache.Session.Set(RPromptLengthKey, e.rpromptLength, cache.INFINITE)
 	}
 
 	return text

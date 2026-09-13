@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -23,21 +23,22 @@ func TestKubectlSegment(t *testing.T) {
 	lsep := string(filepath.ListSeparator)
 
 	cases := []struct {
-		Case            string
-		Template        string
-		DisplayError    bool
-		KubectlExists   bool
+		Files           map[string]string
+		ContextAliases  map[string]string
+		ClusterAliases  map[string]string
+		Cluster         string
 		Kubeconfig      string
-		ParseKubeConfig bool
 		Context         string
 		Namespace       string
 		UserName        string
-		Cluster         string
+		Case            string
+		ExpectedString  string
+		Template        string
+		KubectlExists   bool
+		ParseKubeConfig bool
 		KubectlErr      bool
 		ExpectedEnabled bool
-		ExpectedString  string
-		Files           map[string]string
-		ContextAliases  map[string]string
+		DisplayError    bool
 	}{
 		{
 			Case:            "kubeconfig incomplete",
@@ -101,6 +102,37 @@ func TestKubectlSegment(t *testing.T) {
 			ExpectedEnabled: true,
 		},
 		{
+			Case:            "kubectl cluster alias",
+			Template:        testKubectlAllInfoTemplate,
+			KubectlExists:   true,
+			Context:         "aaa",
+			Namespace:       "bbb",
+			UserName:        "ccc",
+			Cluster:         "ddd",
+			ClusterAliases:  map[string]string{"ddd": "production"},
+			ExpectedString:  "aaa :: bbb :: ccc :: production",
+			ExpectedEnabled: true,
+		},
+		{
+			Case:            "kubeconfig cluster alias",
+			Template:        testKubectlAllInfoTemplate,
+			ParseKubeConfig: true,
+			Files:           testKubeConfigFiles,
+			ClusterAliases:  map[string]string{"ddd": "prod"},
+			ExpectedString:  "aaa :: bbb :: ccc :: prod",
+			ExpectedEnabled: true,
+		},
+		{
+			Case:            "kubeconfig context and cluster alias",
+			Template:        testKubectlAllInfoTemplate,
+			ParseKubeConfig: true,
+			Files:           testKubeConfigFiles,
+			ContextAliases:  map[string]string{"aaa": "my-context"},
+			ClusterAliases:  map[string]string{"ddd": "my-cluster"},
+			ExpectedString:  "my-context :: bbb :: ccc :: my-cluster",
+			ExpectedEnabled: true,
+		},
+		{
 			Case:            "kubeconfig multiple current marker first",
 			Template:        testKubectlAllInfoTemplate,
 			ParseKubeConfig: true,
@@ -158,15 +190,15 @@ func TestKubectlSegment(t *testing.T) {
 
 		env.On("Home").Return("testhome")
 
-		k := &Kubectl{
-			env: env,
-			props: properties.Map{
-				properties.DisplayError: tc.DisplayError,
-				ParseKubeConfig:         tc.ParseKubeConfig,
-				ContextAliases:          tc.ContextAliases,
-				properties.CacheTimeout: 0,
-			},
+		props := options.Map{
+			options.DisplayError: tc.DisplayError,
+			ParseKubeConfig:      tc.ParseKubeConfig,
+			ContextAliases:       tc.ContextAliases,
+			ClusterAliases:       tc.ClusterAliases,
 		}
+
+		k := &Kubectl{}
+		k.Init(props, env)
 
 		assert.Equal(t, tc.ExpectedEnabled, k.Enabled(), tc.Case)
 		if tc.ExpectedEnabled {

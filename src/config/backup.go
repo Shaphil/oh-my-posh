@@ -2,18 +2,18 @@ package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"strings"
 
-	json "github.com/goccy/go-json"
-	yaml "github.com/goccy/go-yaml"
 	toml "github.com/pelletier/go-toml/v2"
+	yaml "go.yaml.in/yaml/v3"
 )
 
 func (cfg *Config) Backup() {
-	dst := cfg.origin + ".bak"
-	source, err := os.Open(cfg.origin)
+	dst := cfg.Source + ".bak"
+	source, err := os.Open(cfg.Source)
 	if err != nil {
 		return
 	}
@@ -54,7 +54,7 @@ func (cfg *Config) Export(format string) string {
 		_ = jsonEncoder.Encode(cfg)
 		prefix := "{\n  \"$schema\": \"https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json\","
 		data := strings.Replace(result.String(), "{", prefix, 1)
-		return escapeGlyphs(data, cfg.MigrateGlyphs)
+		return EscapeGlyphs(data, cfg.MigrateGlyphs)
 	case TOML:
 		tomlEncoder := toml.NewEncoder(&result)
 		tomlEncoder.SetIndentTables(true)
@@ -71,26 +71,14 @@ func (cfg *Config) Export(format string) string {
 	return ""
 }
 
-func (cfg *Config) BackupAndMigrate() {
-	cfg.Backup()
-	cfg.Migrate()
-	cfg.Write(cfg.Format)
-}
-
 func (cfg *Config) Write(format string) {
 	content := cfg.Export(format)
-	if len(content) == 0 {
+	if content == "" {
 		// we are unable to perform the export
-		os.Exit(65)
 		return
 	}
 
-	destination := cfg.Output
-	if len(destination) == 0 {
-		destination = cfg.origin
-	}
-
-	f, err := os.OpenFile(destination, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(cfg.Source, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return
 	}

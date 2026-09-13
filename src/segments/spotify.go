@@ -1,13 +1,12 @@
 package segments
 
 import (
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 )
 
 type Spotify struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
 	MusicPlayer
 }
@@ -16,20 +15,19 @@ type MusicPlayer struct {
 	Status string
 	Artist string
 	Track  string
-	Icon   string
+	Icon   template.Markup
 }
 
 const (
-	// PlayingIcon indicates a song is playing
-	PlayingIcon properties.Property = "playing_icon"
-	// PausedIcon indicates a song is paused
-	PausedIcon properties.Property = "paused_icon"
-	// StoppedIcon indicates a song is stopped
-	StoppedIcon properties.Property = "stopped_icon"
+	PlayingIcon options.Option = "playing_icon"
+	PausedIcon  options.Option = "paused_icon"
+	StoppedIcon options.Option = "stopped_icon"
+	AdIcon      options.Option = "ad_icon"
 
 	playing = "playing"
 	stopped = "stopped"
 	paused  = "paused"
+	ad      = "ad"
 )
 
 func (s *Spotify) Template() string {
@@ -40,15 +38,12 @@ func (s *Spotify) resolveIcon() {
 	switch s.Status {
 	case stopped:
 		// in this case, no artist or track info
-		s.Icon = s.props.GetString(StoppedIcon, "\uF04D ")
+		s.Icon = s.options.Markup(StoppedIcon, " ")
 	case paused:
-		s.Icon = s.props.GetString(PausedIcon, "\uF8E3 ")
+		s.Icon = s.options.Markup(PausedIcon, " ")
 	case playing:
-		s.Icon = s.props.GetString(PlayingIcon, "\uE602 ")
+		s.Icon = s.options.Markup(PlayingIcon, " ")
+	case ad:
+		s.Icon = s.options.Markup(AdIcon, " ")
 	}
-}
-
-func (s *Spotify) Init(props properties.Properties, env runtime.Environment) {
-	s.props = props
-	s.env = env
 }

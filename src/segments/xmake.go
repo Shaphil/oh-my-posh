@@ -1,33 +1,37 @@
 package segments
 
-import (
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-)
-
 type XMake struct {
-	language
+	Language
 }
 
 func (x *XMake) Template() string {
 	return languageTemplate
 }
 
-func (x *XMake) Init(props properties.Properties, env runtime.Environment) {
-	x.language = language{
-		env:        env,
-		props:      props,
-		extensions: []string{"xmake.lua"},
-		commands: []*cmd{
-			{
-				executable: "xmake",
-				args:       []string{"--version"},
-				regex:      `xmake v(?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+)))`,
-			},
-		},
-	}
+func (x *XMake) Enabled() bool {
+	x.loadSpec()
+
+	return x.Language.Enabled()
 }
 
-func (x *XMake) Enabled() bool {
-	return x.language.Enabled()
+// Activation implements the activation gate; see Language.activation.
+func (x *XMake) Activation() Activation {
+	x.loadSpec()
+
+	return x.activation()
+}
+
+func (x *XMake) loadSpec() {
+	const xmakeToolName = "xmake"
+
+	x.extensions = []string{"xmake.lua"}
+	x.tooling = map[string]*cmd{
+		xmakeToolName: {
+			executable:       xmakeToolName,
+			args:             []string{versionFlagArg},
+			regex:            `xmake v(?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+)))`,
+			versionCacheable: true,
+		},
+	}
+	x.defaultTooling = []string{xmakeToolName}
 }

@@ -6,9 +6,6 @@
       "segments": [
         {
           "foreground": "white",
-          "properties": {
-            "fetch_version": false
-          },
           "style": "plain",
           "template": "({{ if .Error }}{{ .Error }}{{ else }}{{ if .Venv }}{{ .Venv }} {{ end }}{{ .Full }}{{ end }})",
           "type": "python"
@@ -39,7 +36,7 @@
         },
         {
           "foreground": "lightYellow",
-          "properties": {
+          "options": {
             "style": "full"
           },
           "style": "plain",
@@ -49,10 +46,7 @@
         {
           "style": "plain",
           "template": "<darkGray>on</> <white>git:</><cyan>{{ .HEAD }}</>{{ if .Working.Changed }}<red> x</>{{ end }} ",
-          "type": "git",
-          "properties": {
-            "fetch_status": true
-          }
+          "type": "git"
         },
         {
           "foreground": "darkGray",
@@ -84,5 +78,5 @@
     }
   ],
   "final_space": true,
-  "version": 2
+  "version": 4
 }

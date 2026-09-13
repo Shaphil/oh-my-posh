@@ -7,14 +7,16 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-	"gopkg.in/yaml.v3"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
+	"github.com/jandedobbeleer/oh-my-posh/src/runtime/path"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
+
+	yaml "go.yaml.in/yaml/v3"
 )
 
 const (
-	FetchStack properties.Property = "fetch_stack"
-	FetchAbout properties.Property = "fetch_about"
+	FetchStack options.Option = "fetch_stack"
+	FetchAbout options.Option = "fetch_about"
 
 	JSON string = "json"
 	YAML string = "yaml"
@@ -24,18 +26,17 @@ const (
 )
 
 type Pulumi struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
 	Stack string
 	Name  string
 
 	workspaceSHA1 string
 
-	backend
+	Backend
 }
 
-type backend struct {
+type Backend struct {
 	URL  string `json:"url"`
 	User string `json:"user"`
 }
@@ -49,12 +50,7 @@ type pulumiWorkSpaceFileSpec struct {
 }
 
 func (p *Pulumi) Template() string {
-	return "\U000f0d46 {{ .Stack }}{{if .User }} :: {{ .User }}@{{ end }}{{ if .URL }}{{ .URL }}{{ end }}"
-}
-
-func (p *Pulumi) Init(props properties.Properties, env runtime.Environment) {
-	p.props = props
-	p.env = env
+	return "\ue873 {{ .Stack }}{{if .User }} :: {{ .User }}@{{ end }}{{ if .URL }}{{ .URL }}{{ end }}"
 }
 
 func (p *Pulumi) Enabled() bool {
@@ -64,15 +60,15 @@ func (p *Pulumi) Enabled() bool {
 
 	err := p.getProjectName()
 	if err != nil {
-		p.env.Error(err)
+		log.Error(err)
 		return false
 	}
 
-	if p.props.GetBool(FetchStack, false) {
+	if p.options.Bool(FetchStack, false) {
 		p.getPulumiStackName()
 	}
 
-	if p.props.GetBool(FetchAbout, false) {
+	if p.options.Bool(FetchAbout, false) {
 		p.getPulumiAbout()
 	}
 
@@ -80,8 +76,8 @@ func (p *Pulumi) Enabled() bool {
 }
 
 func (p *Pulumi) getPulumiStackName() {
-	if len(p.Name) == 0 || len(p.workspaceSHA1) == 0 {
-		p.env.Debug("pulumi project name or workspace sha1 is empty")
+	if p.Name == "" || p.workspaceSHA1 == "" {
+		log.Debug("pulumi project name or workspace sha1 is empty")
 		return
 	}
 
@@ -100,11 +96,11 @@ func (p *Pulumi) getPulumiStackName() {
 	var pulumiWorkspaceSpec pulumiWorkSpaceFileSpec
 	err := json.Unmarshal([]byte(workspaceCacheFileContent), &pulumiWorkspaceSpec)
 	if err != nil {
-		p.env.Error(fmt.Errorf("pulumi workspace file decode error"))
+		log.Error(fmt.Errorf("pulumi workspace file decode error"))
 		return
 	}
 
-	p.env.DebugF("pulumi stack name: %s", pulumiWorkspaceSpec.Stack)
+	log.Debugf("pulumi stack name: %s", pulumiWorkspaceSpec.Stack)
 	p.Stack = pulumiWorkspaceSpec.Stack
 }
 
@@ -117,7 +113,7 @@ func (p *Pulumi) getProjectName() error {
 		}
 	}
 
-	if len(kind) == 0 {
+	if kind == "" {
 		return fmt.Errorf("no pulumi spec file found")
 	}
 
@@ -136,85 +132,56 @@ func (p *Pulumi) getProjectName() error {
 	}
 
 	if err != nil {
-		p.env.Error(err)
+		log.Error(err)
 		return nil
 	}
 
 	p.Name = pulumiFileSpec.Name
 
-	sha1HexString := func(value string) string {
-		h := sha1.New()
-
-		_, err := h.Write([]byte(value))
-		if err != nil {
-			p.env.Error(err)
-			return ""
-		}
-
-		return hex.EncodeToString(h.Sum(nil))
-	}
-
-	p.workspaceSHA1 = sha1HexString(p.env.Pwd() + p.env.PathSeparator() + fileName)
+	p.workspaceSHA1 = p.sha1HexString(p.env.Pwd() + path.Separator() + fileName)
 
 	return nil
 }
 
+func (p *Pulumi) sha1HexString(s string) string {
+	h := sha1.New()
+
+	_, err := h.Write([]byte(s))
+	if err != nil {
+		log.Error(err)
+		return ""
+	}
+
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 func (p *Pulumi) getPulumiAbout() {
-	if len(p.Stack) == 0 {
-		p.env.Error(fmt.Errorf("pulumi stack name is empty, use `fetch_stack` property to enable stack fetching"))
-		return
-	}
-
-	cacheKey := "pulumi-" + p.Name + "-" + p.Stack + "-" + p.workspaceSHA1 + "-about"
-
-	getAboutCache := func(key string) (*backend, error) {
-		aboutBackend, OK := p.env.Cache().Get(key)
-		if (!OK || len(aboutBackend) == 0) || (OK && len(aboutBackend) == 0) {
-			return nil, fmt.Errorf("no data in cache")
-		}
-
-		var backend *backend
-		err := json.Unmarshal([]byte(aboutBackend), &backend)
-		if err != nil {
-			p.env.DebugF("unable to decode about cache: %s", aboutBackend)
-			p.env.Error(fmt.Errorf("pulling about cache decode error"))
-			return nil, err
-		}
-
-		return backend, nil
-	}
-
-	aboutBackend, err := getAboutCache(cacheKey)
-	if err == nil {
-		p.backend = *aboutBackend
+	if p.Stack == "" {
+		log.Error(fmt.Errorf("pulumi stack name is empty, use `fetch_stack` property to enable stack fetching"))
 		return
 	}
 
 	aboutOutput, err := p.env.RunCommand("pulumi", "about", "--json")
 
 	if err != nil {
-		p.env.Error(fmt.Errorf("unable to get pulumi about output"))
+		log.Error(fmt.Errorf("unable to get pulumi about output"))
 		return
 	}
 
 	var about struct {
-		Backend *backend `json:"backend"`
+		Backend *Backend `json:"backend"`
 	}
 
 	err = json.Unmarshal([]byte(aboutOutput), &about)
 	if err != nil {
-		p.env.Error(fmt.Errorf("pulumi about output decode error"))
+		log.Error(fmt.Errorf("pulumi about output decode error"))
 		return
 	}
 
 	if about.Backend == nil {
-		p.env.Debug("pulumi about backend is not set")
+		log.Debug("pulumi about backend is not set")
 		return
 	}
 
-	p.backend = *about.Backend
-
-	cacheTimeout := p.props.GetInt(properties.CacheTimeout, 43800)
-	jso, _ := json.Marshal(about.Backend)
-	p.env.Cache().Set(cacheKey, string(jso), cacheTimeout)
+	p.Backend = *about.Backend
 }

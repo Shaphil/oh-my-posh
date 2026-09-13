@@ -1,33 +1,37 @@
 package segments
 
-import (
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-)
-
 type AzFunc struct {
-	language
+	Language
 }
 
 func (az *AzFunc) Template() string {
 	return languageTemplate
 }
 
-func (az *AzFunc) Init(props properties.Properties, env runtime.Environment) {
-	az.language = language{
-		env:        env,
-		props:      props,
-		extensions: []string{"host.json", "local.settings.json", "function.json"},
-		commands: []*cmd{
-			{
-				executable: "func",
-				args:       []string{"--version"},
-				regex:      `(?P<version>[0-9.]+)`,
-			},
-		},
-	}
-}
+const azFuncToolName = "func"
 
 func (az *AzFunc) Enabled() bool {
-	return az.language.Enabled()
+	az.loadSpec()
+
+	return az.Language.Enabled()
+}
+
+// Activation implements the activation gate; see Language.activation.
+func (az *AzFunc) Activation() Activation {
+	az.loadSpec()
+
+	return az.activation()
+}
+
+func (az *AzFunc) loadSpec() {
+	az.extensions = []string{"host.json", "local.settings.json", "function.json"}
+	az.tooling = map[string]*cmd{
+		azFuncToolName: {
+			executable:       azFuncToolName,
+			args:             []string{versionFlagArg},
+			regex:            `(?P<version>[0-9.]+)`,
+			versionCacheable: true,
+		},
+	}
+	az.defaultTooling = []string{azFuncToolName}
 }

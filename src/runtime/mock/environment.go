@@ -3,9 +3,7 @@ package mock
 import (
 	"io"
 	"io/fs"
-	"time"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/cache"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/battery"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/http"
@@ -47,8 +45,8 @@ func (env *Environment) HasFolder(folder string) bool {
 	return args.Bool(0)
 }
 
-func (env *Environment) ResolveSymlink(path string) (string, error) {
-	args := env.Called(path)
+func (env *Environment) ResolveSymlink(input string) (string, error) {
+	args := env.Called(input)
 	return args.String(0), args.Error(1)
 }
 
@@ -57,14 +55,9 @@ func (env *Environment) FileContent(file string) string {
 	return args.String(0)
 }
 
-func (env *Environment) LsDir(path string) []fs.DirEntry {
-	args := env.Called(path)
+func (env *Environment) LsDir(input string) []fs.DirEntry {
+	args := env.Called(input)
 	return args.Get(0).([]fs.DirEntry)
-}
-
-func (env *Environment) PathSeparator() string {
-	args := env.Called()
-	return args.String(0)
 }
 
 func (env *Environment) User() string {
@@ -97,8 +90,18 @@ func (env *Environment) HasCommand(command string) bool {
 	return args.Bool(0)
 }
 
+func (env *Environment) StatFile(path string) (runtime.FileStat, error) {
+	args := env.Called(path)
+	return args.Get(0).(runtime.FileStat), args.Error(1)
+}
+
 func (env *Environment) RunCommand(command string, args ...string) (string, error) {
 	arguments := env.Called(command, args)
+	return arguments.String(0), arguments.Error(1)
+}
+
+func (env *Environment) RunCommandWithEnv(command string, envs []string, args ...string) (string, error) {
+	arguments := env.Called(command, envs, args)
 	return arguments.String(0), arguments.Error(1)
 }
 
@@ -140,6 +143,14 @@ func (env *Environment) Shell() string {
 func (env *Environment) QueryWindowTitles(processName, windowTitleRegex string) (string, error) {
 	args := env.Called(processName, windowTitleRegex)
 	return args.String(0), args.Error(1)
+}
+
+func (env *Environment) QueryMediaPlayer(player string) (*runtime.MediaInfo, error) {
+	args := env.Called(player)
+	if info, ok := args.Get(0).(*runtime.MediaInfo); ok {
+		return info, args.Error(1)
+	}
+	return nil, args.Error(1)
 }
 
 func (env *Environment) WindowsRegistryKeyValue(path string) (*runtime.WindowsRegistryValue, error) {
@@ -187,16 +198,6 @@ func (env *Environment) CachePath() string {
 	return args.String(0)
 }
 
-func (env *Environment) Cache() cache.Cache {
-	args := env.Called()
-	return args.Get(0).(cache.Cache)
-}
-
-func (env *Environment) Session() cache.Cache {
-	args := env.Called()
-	return args.Get(0).(cache.Cache)
-}
-
 func (env *Environment) Close() {
 	_ = env.Called()
 }
@@ -211,8 +212,8 @@ func (env *Environment) InWSLSharedDrive() bool {
 	return args.Bool(0)
 }
 
-func (env *Environment) ConvertToWindowsPath(_ string) string {
-	args := env.Called()
+func (env *Environment) ConvertToWindowsPath(input string) string {
+	args := env.Called(input)
 	return args.String(0)
 }
 
@@ -226,15 +227,6 @@ func (env *Environment) Connection(connectionType runtime.ConnectionType) (*runt
 	return args.Get(0).(*runtime.Connection), args.Error(1)
 }
 
-func (env *Environment) TemplateCache() *cache.Template {
-	args := env.Called()
-	return args.Get(0).(*cache.Template)
-}
-
-func (env *Environment) LoadTemplateCache() {
-	_ = env.Called()
-}
-
 func (env *Environment) MockGitCommand(dir, returnValue string, args ...string) {
 	args = append([]string{"-C", dir, "--no-optional-locks", "-c", "core.quotepath=false", "-c", "color.status=false"}, args...)
 	env.On("RunCommand", "git", args).Return(returnValue, nil)
@@ -243,6 +235,11 @@ func (env *Environment) MockGitCommand(dir, returnValue string, args ...string) 
 func (env *Environment) MockHgCommand(dir, returnValue string, args ...string) {
 	args = append([]string{"-R", dir}, args...)
 	env.On("RunCommand", "hg", args).Return(returnValue, nil)
+}
+
+func (env *Environment) MockJjCommand(dir, returnValue string, args ...string) {
+	args = append([]string{"--repository", dir, "--no-pager", "--color", "never", "--ignore-working-copy"}, args...)
+	env.On("RunCommand", "jj", args).Return(returnValue, nil)
 }
 
 func (env *Environment) MockSvnCommand(dir, returnValue string, args ...string) {
@@ -258,22 +255,6 @@ func (env *Environment) HasFileInParentDirs(pattern string, depth uint) bool {
 func (env *Environment) DirMatchesOneOf(dir string, regexes []string) bool {
 	args := env.Called(dir, regexes)
 	return args.Bool(0)
-}
-
-func (env *Environment) Trace(start time.Time, args ...string) {
-	_ = env.Called(start, args)
-}
-
-func (env *Environment) Debug(message string) {
-	_ = env.Called(message)
-}
-
-func (env *Environment) DebugF(format string, a ...any) {
-	_ = env.Called(format, a)
-}
-
-func (env *Environment) Error(err error) {
-	_ = env.Called(err)
 }
 
 func (env *Environment) DirIsWritable(path string) bool {

@@ -4,9 +4,9 @@ import (
 	"strings"
 
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/runtime/path"
 )
 
-// SaplingStatus represents part of the status of a Sapling repository
 type SaplingStatus struct {
 	ScmStatus
 }
@@ -43,22 +43,30 @@ const (
 	SLCOMMITTEMPLATE = "no:{node}\nns:{sl_node}\nnd:{sl_date}\nun:{sl_user}\nbm:{activebookmark}\ndn:{desc|firstline}"
 )
 
-type Sapling struct {
-	scm
+// saplingStatusFields lists what the `sl status` scan populates: the single
+// probe this segment derives from its templates (see FieldRefs).
+var saplingStatusFields = []string{workingField}
 
+type Sapling struct {
+	Working     *SaplingStatus
 	ShortHash   string
 	Hash        string
 	When        string
 	Author      string
 	Bookmark    string
 	Description string
-	New         bool
-
-	Working *SaplingStatus
+	Scm
+	FieldRefs
+	New bool
 }
 
 func (sl *Sapling) Template() string {
 	return " {{ if .Bookmark }}\uf097 {{ .Bookmark }}*{{ else }}\ue729 {{ .ShortHash }}{{ end }}{{ if .Working.Changed }} \uf044 {{ .Working.String }}{{ end }} "
+}
+
+// Activation gates on the repository marker shouldDisplay searches for.
+func (sl *Sapling) Activation() Activation {
+	return Activation{ProjectFiles: []string{".sl"}}
 }
 
 func (sl *Sapling) Enabled() bool {
@@ -72,6 +80,8 @@ func (sl *Sapling) Enabled() bool {
 }
 
 func (sl *Sapling) shouldDisplay() bool {
+	sl.command = SAPLINGCOMMAND
+
 	if !sl.hasCommand(SAPLINGCOMMAND) {
 		return false
 	}
@@ -81,48 +91,55 @@ func (sl *Sapling) shouldDisplay() bool {
 		return false
 	}
 
-	if sl.shouldIgnoreRootRepository(slDir.ParentFolder) {
-		return false
-	}
-
-	sl.workingDir = slDir.Path
-	sl.rootDir = slDir.Path
+	sl.mainSCMDir = slDir.Path
+	sl.scmDir = slDir.Path
 	// convert the worktree file path to a windows one when in a WSL shared folder
-	sl.realDir = strings.TrimSuffix(sl.convertToWindowsPath(slDir.Path), "/.sl")
-	sl.RepoName = runtime.Base(sl.env, sl.convertToLinuxPath(sl.realDir))
+	sl.repoRootDir = strings.TrimSuffix(sl.convertToWindowsPath(slDir.Path), "/.sl")
+	sl.RepoName = path.Base(sl.convertToLinuxPath(sl.repoRootDir))
 	sl.setDir(slDir.Path)
 
 	return true
 }
 
+func (sl *Sapling) CacheKey() (string, bool) {
+	dir, err := sl.env.HasParentFilePath(".sl", true)
+	if err != nil {
+		return "", false
+	}
+
+	return dir.Path, true
+}
+
 func (sl *Sapling) setDir(dir string) {
-	dir = runtime.ReplaceHomeDirPrefixWithTilde(sl.env, dir) // align with template PWD
+	dir = path.ReplaceHomeDirPrefixWithTilde(dir) // align with template PWD
+
 	if sl.env.GOOS() == runtime.WINDOWS {
 		sl.Dir = strings.TrimSuffix(dir, `\.sl`)
 		return
 	}
+
 	sl.Dir = strings.TrimSuffix(dir, "/.sl")
 }
 
 func (sl *Sapling) setHeadContext() {
 	sl.setCommitContext()
 
-	statusFormats := sl.props.GetKeyValueMap(StatusFormats, map[string]string{})
-	sl.Working = &SaplingStatus{ScmStatus: ScmStatus{Formats: statusFormats}}
+	statusFormats := sl.options.KeyValueMap(StatusFormats, map[string]string{})
+	sl.Working = &SaplingStatus{Formats: statusFormats}
 
-	displayStatus := sl.props.GetBool(FetchStatus, true)
+	displayStatus := sl.fetchUnit(saplingStatusFields...)
 	if !displayStatus {
 		return
 	}
 
 	changes := sl.getSaplingCommandOutput("status")
-	if len(changes) == 0 {
+	if changes == "" {
 		return
 	}
-	lines := strings.Split(changes, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(changes, "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
-		if len(line) == 0 {
+		if line == "" {
 			continue
 		}
 		// element is the element from someSlice for where we are
@@ -132,12 +149,12 @@ func (sl *Sapling) setHeadContext() {
 
 func (sl *Sapling) setCommitContext() {
 	body := sl.getSaplingCommandOutput("log", "--limit", "1", "--template", SLCOMMITTEMPLATE)
-	if len(body) == 0 {
+	if body == "" {
 		sl.New = true
 		return
 	}
-	splitted := strings.Split(strings.TrimSpace(body), "\n")
-	for _, line := range splitted {
+	splitted := strings.SplitSeq(strings.TrimSpace(body), "\n")
+	for line := range splitted {
 		line = strings.TrimSpace(line)
 		if len(line) <= 3 {
 			continue

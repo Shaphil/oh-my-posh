@@ -1,26 +1,23 @@
 package segments
 
 import (
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 )
 
 type Os struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
-	Icon string
+	Icon template.Markup
 }
 
 const (
-	// MacOS the string/icon to use for MacOS
-	MacOS properties.Property = "macos"
-	// Linux the string/icon to use for linux
-	Linux properties.Property = "linux"
-	// Windows the string/icon to use for windows
-	Windows properties.Property = "windows"
-	// DisplayDistroName display the distro name or not
-	DisplayDistroName properties.Property = "display_distro_name"
+	MacOS             options.Option = "macos"
+	Linux             options.Option = "linux"
+	Windows           options.Option = "windows"
+	Android           options.Option = "android"
+	DisplayDistroName options.Option = "display_distro_name"
 )
 
 func (oi *Os) Template() string {
@@ -31,68 +28,76 @@ func (oi *Os) Enabled() bool {
 	goos := oi.env.GOOS()
 	switch goos {
 	case runtime.WINDOWS:
-		oi.Icon = oi.props.GetString(Windows, "\uE62A")
+		oi.Icon = oi.options.Markup(Windows, "\uE62A")
 	case runtime.DARWIN:
-		oi.Icon = oi.props.GetString(MacOS, "\uF179")
-	case runtime.LINUX:
+		oi.Icon = oi.options.Markup(MacOS, "\uF179")
+	case runtime.LINUX, runtime.FREEBSD:
 		pf := oi.env.Platform()
-		displayDistroName := oi.props.GetBool(DisplayDistroName, false)
+		displayDistroName := oi.options.Bool(DisplayDistroName, false)
 		if displayDistroName {
-			oi.Icon = oi.props.GetString(properties.Property(pf), pf)
+			icon := oi.options.String(options.Option(pf), "")
+			if icon == "" {
+				oi.Icon = template.EscapeMarkup(pf)
+				break
+			}
+			oi.Icon = template.RawMarkup(icon)
 			break
 		}
 		oi.Icon = oi.getDistroIcon(pf)
+	case runtime.ANDROID:
+		oi.Icon = oi.options.Markup(Android, "\ue70e")
 	default:
-		oi.Icon = goos
+		oi.Icon = template.EscapeMarkup(goos)
 	}
 	return true
 }
 
-func (oi *Os) getDistroIcon(distro string) string {
+func (oi *Os) getDistroIcon(distro string) template.Markup {
 	iconMap := map[string]string{
-		"alma":                "\uF31D",
-		"almalinux":           "\uF31D",
-		"almalinux9":          "\uF31D",
-		"alpine":              "\uF300",
-		"android":             "\uF17b",
-		"aosc":                "\uF301",
-		"arch":                "\uF303",
-		"centos":              "\uF304",
-		"coreos":              "\uF305",
-		"debian":              "\uF306",
-		"deepin":              "\uF321",
-		"devuan":              "\uF307",
-		"elementary":          "\uF309",
-		"endeavouros":         "\uF322",
-		"fedora":              "\uF30a",
-		"gentoo":              "\uF30d",
-		"mageia":              "\uF310",
-		"manjaro":             "\uF312",
-		"mint":                "\uF30e",
-		"nixos":               "\uF313",
-		"opensuse":            "\uF314",
-		"opensuse-tumbleweed": "\uF314",
-		"raspbian":            "\uF315",
-		"redhat":              "\uF316",
-		"rocky":               "\uF32B",
-		"sabayon":             "\uF317",
-		"slackware":           "\uF319",
-		"ubuntu":              "\uF31b",
+		"alma":                "\uf31d",
+		"almalinux":           "\uf31d",
+		"almalinux9":          "\uf31d",
+		"alpine":              "\uf300",
+		"android":             "\ue70e",
+		"aosc":                "\uf301",
+		"arch":                "\uf303",
+		"artix":               "\uf31f",
+		"centos":              "\uf304",
+		"coreos":              "\uf305",
+		"debian":              "\uf306",
+		"deepin":              "\uf321",
+		"devuan":              "\uf307",
+		"elementary":          "\uf309",
+		"endeavouros":         "\uf322",
+		"fedora":              "\uf30a",
+		"freebsd":             "\U000f08e0",
+		"gentoo":              "\uf30d",
+		"kali":                "\uf327",
+		"mageia":              "\uf310",
+		"manjaro":             "\uf312",
+		"mint":                "\U000f08ed",
+		"neon":                "\uf331",
+		"nixos":               "\uf313",
+		"opensuse":            "\uf314",
+		"opensuse-tumbleweed": "\uf314",
+		"raspbian":            "\uf315",
+		"redhat":              "\uf316",
+		"rocky":               "\uf32b",
+		"sabayon":             "\uf317",
+		"slackware":           "\uf319",
+		"ubuntu":              "\uf31b",
+		"void":                "\uf32e",
+		"zorin":               "\uf32f",
 	}
 
 	if icon, ok := iconMap[distro]; ok {
-		return oi.props.GetString(properties.Property(distro), icon)
+		return oi.options.Markup(options.Option(distro), icon)
 	}
 
-	icon := oi.props.GetString(properties.Property(distro), "")
+	icon := oi.options.String(options.Option(distro), "")
 	if len(icon) > 0 {
-		return icon
+		return template.RawMarkup(icon)
 	}
 
-	return oi.props.GetString(Linux, "\uF17C")
-}
-
-func (oi *Os) Init(props properties.Properties, env runtime.Environment) {
-	oi.props = props
-	oi.env = env
+	return oi.options.Markup(Linux, "\uF17C")
 }

@@ -5,24 +5,23 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 )
 
 type LastFM struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
 	Artist string
 	Track  string
 	Full   string
-	Icon   string
+	Icon   template.Markup
 	Status string
 }
 
 const (
-	// LastFM username
-	Username properties.Property = "username"
+	Username options.Option = "username"
 )
 
 type lmfDate struct {
@@ -56,7 +55,7 @@ func (d *LastFM) Enabled() bool {
 	err := d.setStatus()
 
 	if err != nil {
-		d.env.Error(err)
+		log.Error(err)
 		return false
 	}
 
@@ -68,39 +67,24 @@ func (d *LastFM) Template() string {
 }
 
 func (d *LastFM) getResult() (*lfmDataResponse, error) {
-	cacheTimeout := d.props.GetInt(properties.CacheTimeout, 0)
 	response := new(lfmDataResponse)
 
-	apikey := d.props.GetString(APIKey, ".")
-	username := d.props.GetString(Username, ".")
-	httpTimeout := d.props.GetInt(properties.HTTPTimeout, properties.DefaultHTTPTimeout)
+	apikey := d.options.Template(APIKey, ".", d)
+	username := d.options.Template(Username, ".", d)
+	httpTimeout := d.options.Int(options.HTTPTimeout, options.DefaultHTTPTimeout)
 
 	url := fmt.Sprintf("https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&api_key=%s&user=%s&format=json&limit=1", apikey, username)
-
-	if cacheTimeout > 0 {
-		val, found := d.env.Cache().Get(url)
-
-		if found {
-			err := json.Unmarshal([]byte(val), response)
-			if err != nil {
-				return nil, err
-			}
-			return response, nil
-		}
-	}
 
 	body, err := d.env.HTTPRequest(url, nil, httpTimeout)
 	if err != nil {
 		return new(lfmDataResponse), err
 	}
+
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return new(lfmDataResponse), err
 	}
 
-	if cacheTimeout > 0 {
-		d.env.Cache().Set(url, string(body), cacheTimeout)
-	}
 	return response, nil
 }
 
@@ -111,7 +95,7 @@ func (d *LastFM) setStatus() error {
 	}
 
 	if len(q.TracksInfo.Tracks) == 0 {
-		return errors.New("No data found")
+		return errors.New("no data found")
 	}
 
 	track := q.TracksInfo.Tracks[0]
@@ -120,23 +104,15 @@ func (d *LastFM) setStatus() error {
 	d.Track = track.Name
 	d.Full = fmt.Sprintf("%s - %s", d.Artist, d.Track)
 
-	isPlaying := false
-	if track.Info != nil && track.Info.IsPlaying != nil && *track.Info.IsPlaying == "true" {
-		isPlaying = true
-	}
+	isPlaying := track.Info != nil && track.Info.IsPlaying != nil && *track.Info.IsPlaying == "true"
 
 	if isPlaying {
-		d.Icon = d.props.GetString(PlayingIcon, "\uE602 ")
+		d.Icon = d.options.Markup(PlayingIcon, "\uE602 ")
 		d.Status = "playing"
 	} else {
-		d.Icon = d.props.GetString(StoppedIcon, "\uF04D ")
+		d.Icon = d.options.Markup(StoppedIcon, "\uF04D ")
 		d.Status = "stopped"
 	}
 
 	return nil
-}
-
-func (d *LastFM) Init(props properties.Properties, env runtime.Environment) {
-	d.props = props
-	d.env = env
 }

@@ -6,33 +6,43 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
 	"github.com/jandedobbeleer/oh-my-posh/src/regex"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 )
 
 type Unity struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
 	UnityVersion  string
 	CSharpVersion string
 }
 
+func (u *Unity) Template() string {
+	return " \ue721 {{ .UnityVersion }}{{ if .CSharpVersion }} {{ .CSharpVersion }}{{ end }} "
+}
+
+// Activation gates on the ProjectSettings marker GetUnityVersion searches
+// for; the search itself stays in Enabled because its result (the project
+// directory) is what the version lookup reads from.
+func (u *Unity) Activation() Activation {
+	return Activation{ProjectFiles: []string{"ProjectSettings"}}
+}
+
 func (u *Unity) Enabled() bool {
 	unityVersion, err := u.GetUnityVersion()
 	if err != nil {
-		u.env.Error(err)
+		log.Error(err)
 		return false
 	}
-	if len(unityVersion) == 0 {
+	if unityVersion == "" {
 		return false
 	}
 	u.UnityVersion = unityVersion
 
 	csharpVersion, err := u.GetCSharpVersion()
 	if err != nil {
-		u.env.Error(err)
+		log.Error(err)
 	}
 	u.CSharpVersion = csharpVersion
 
@@ -42,28 +52,28 @@ func (u *Unity) Enabled() bool {
 func (u *Unity) GetUnityVersion() (string, error) {
 	projectDir, err := u.env.HasParentFilePath("ProjectSettings", false)
 	if err != nil {
-		u.env.Debug("no ProjectSettings parent folder found")
+		log.Debug("no ProjectSettings parent folder found")
 		return "", err
 	}
 
 	if !u.env.HasFilesInDir(projectDir.Path, "ProjectVersion.txt") {
-		u.env.Debug("no ProjectVersion.txt file found")
+		log.Debug("no ProjectVersion.txt file found")
 		return "", err
 	}
 
 	versionFilePath := filepath.Join(projectDir.Path, "ProjectVersion.txt")
 	versionFileText := u.env.FileContent(versionFilePath)
 
-	lines := strings.Split(versionFileText, "\n")
+	lines := strings.SplitSeq(versionFileText, "\n")
 	versionPrefix := "m_EditorVersion: "
-	for _, line := range lines {
+	for line := range lines {
 		if !strings.HasPrefix(line, versionPrefix) {
 			continue
 		}
 		version := strings.TrimPrefix(line, versionPrefix)
 		version = strings.TrimSpace(version)
-		if len(version) == 0 {
-			return "", errors.New("Empty m_EditorVersion")
+		if version == "" {
+			return "", errors.New("empty m_EditorVersion")
 		}
 		fIndex := strings.Index(version, "f")
 		if fIndex > 0 {
@@ -75,36 +85,42 @@ func (u *Unity) GetUnityVersion() (string, error) {
 	return "", errors.New("ProjectSettings/ProjectVersion.txt is missing m_EditorVersion")
 }
 
+const (
+	csharp6  = "C# 6"
+	csharp73 = "C# 7.3"
+	csharp8  = "C# 8"
+	csharp9  = "C# 9"
+)
+
 func (u *Unity) GetCSharpVersion() (version string, err error) {
-	lastDotIndex := strings.LastIndex(u.UnityVersion, ".")
-	if lastDotIndex == -1 {
+	shortUnityVersion, _, found := strings.CutLast(u.UnityVersion, ".")
+	if !found {
 		return "", errors.New("lastDotIndex")
 	}
-	shortUnityVersion := u.UnityVersion[0:lastDotIndex]
 
 	var csharpVersionsByUnityVersion = map[string]string{
-		"2017.1": "C# 6",
-		"2017.2": "C# 6",
-		"2017.3": "C# 6",
-		"2017.4": "C# 6",
-		"2018.1": "C# 6",
-		"2018.2": "C# 6",
-		"2018.3": "C# 7.3",
-		"2018.4": "C# 7.3",
-		"2019.1": "C# 7.3",
-		"2019.2": "C# 7.3",
-		"2019.3": "C# 7.3",
-		"2019.4": "C# 7.3",
-		"2020.1": "C# 7.3",
-		"2020.2": "C# 8",
-		"2020.3": "C# 8",
-		"2021.1": "C# 8",
-		"2021.2": "C# 9",
-		"2021.3": "C# 9",
-		"2022.1": "C# 9",
-		"2022.2": "C# 9",
-		"2023.1": "C# 9",
-		"2023.2": "C# 9",
+		"2017.1": csharp6,
+		"2017.2": csharp6,
+		"2017.3": csharp6,
+		"2017.4": csharp6,
+		"2018.1": csharp6,
+		"2018.2": csharp6,
+		"2018.3": csharp73,
+		"2018.4": csharp73,
+		"2019.1": csharp73,
+		"2019.2": csharp73,
+		"2019.3": csharp73,
+		"2019.4": csharp73,
+		"2020.1": csharp73,
+		"2020.2": csharp8,
+		"2020.3": csharp8,
+		"2021.1": csharp8,
+		"2021.2": csharp9,
+		"2021.3": csharp9,
+		"2022.1": csharp9,
+		"2022.2": csharp9,
+		"2023.1": csharp9,
+		"2023.2": csharp9,
 	}
 
 	csharpVersion, found := csharpVersionsByUnityVersion[shortUnityVersion]
@@ -112,17 +128,13 @@ func (u *Unity) GetCSharpVersion() (version string, err error) {
 		return csharpVersion, nil
 	}
 
-	u.env.Debug(fmt.Sprintf("Unity version %s doesn't exist in the map", shortUnityVersion))
+	log.Debug(fmt.Sprintf("Unity version %s doesn't exist in the map", shortUnityVersion))
 	return u.GetCSharpVersionFromWeb(shortUnityVersion)
 }
 
 func (u *Unity) GetCSharpVersionFromWeb(shortUnityVersion string) (version string, err error) {
-	if csharpVersion, found := u.env.Cache().Get(shortUnityVersion); found {
-		return csharpVersion, nil
-	}
-
 	url := fmt.Sprintf("https://docs.unity3d.com/%s/Documentation/Manual/CSharpCompiler.html", shortUnityVersion)
-	httpTimeout := u.props.GetInt(properties.HTTPTimeout, 2000)
+	httpTimeout := u.options.Int(options.HTTPTimeout, 2000)
 
 	body, err := u.env.HTTPRequest(url, nil, httpTimeout)
 	if err != nil {
@@ -135,19 +147,8 @@ func (u *Unity) GetCSharpVersionFromWeb(shortUnityVersion string) (version strin
 	matches := regex.FindNamedRegexMatch(pattern, pageContent)
 	if matches != nil && matches["csharpVersion"] != "" {
 		csharpVersion := strings.TrimSuffix(matches["csharpVersion"], ".0")
-		u.env.Cache().Set(shortUnityVersion, csharpVersion, -1)
 		return csharpVersion, nil
 	}
 
-	u.env.Cache().Set(shortUnityVersion, "", -1)
 	return "", nil
-}
-
-func (u *Unity) Template() string {
-	return " \ue721 {{ .UnityVersion }}{{ if .CSharpVersion }} {{ .CSharpVersion }}{{ end }} "
-}
-
-func (u *Unity) Init(props properties.Properties, env runtime.Environment) {
-	u.props = props
-	u.env = env
 }

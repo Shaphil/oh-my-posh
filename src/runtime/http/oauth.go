@@ -1,3 +1,4 @@
+//revive:disable:var-naming // package intentionally mirrors standard name for compatibility across runtime
 package http
 
 import (
@@ -5,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	httplib "net/http"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/cache"
 )
 
 const (
@@ -29,45 +32,42 @@ func (a *OAuthError) Error() string {
 }
 
 type OAuthRequest struct {
-	Request
-
 	AccessTokenKey  string
 	RefreshTokenKey string
 	SegmentName     string
-
-	RefreshToken string
-	AccessToken  string
+	RefreshToken    string
+	AccessToken     string
+	Request
 }
 
 func (o *OAuthRequest) getAccessToken() (string, error) {
 	// get directly from cache
-	if acccessToken, OK := o.Env.Cache().Get(o.AccessTokenKey); OK && len(acccessToken) != 0 {
-		return acccessToken, nil
+	if accessToken, OK := cache.Device.Get[string](o.AccessTokenKey); OK && len(accessToken) != 0 {
+		return accessToken, nil
 	}
 
 	// use cached refresh token to get new access token
-	if refreshToken, OK := o.Env.Cache().Get(o.RefreshTokenKey); OK && len(refreshToken) != 0 {
-		if acccessToken, err := o.refreshToken(refreshToken); err == nil {
-			return acccessToken, nil
+	if refreshToken, OK := cache.Device.Get[string](o.RefreshTokenKey); OK && len(refreshToken) != 0 {
+		if accessToken, err := o.refreshToken(refreshToken); err == nil {
+			return accessToken, nil
 		}
 	}
 
 	// use initial refresh token from property
-	// refreshToken := o.props.GetString(properties.RefreshToken, "")
+	// refreshToken := o.props.GetString(options.RefreshToken, "")
 	// ignore an empty or default refresh token
-	if len(o.RefreshToken) == 0 || o.RefreshToken == DefaultRefreshToken {
+	if o.RefreshToken == "" || o.RefreshToken == DefaultRefreshToken {
 		return "", &OAuthError{
 			message: InvalidRefreshToken,
 		}
 	}
 
 	// no need to let the user provide access token, we'll always verify the refresh token
-	acccessToken, err := o.refreshToken(o.RefreshToken)
-	return acccessToken, err
+	accessToken, err := o.refreshToken(o.RefreshToken)
+	return accessToken, err
 }
 
 func (o *OAuthRequest) refreshToken(refreshToken string) (string, error) {
-	// httpTimeout := o.props.GetInt(properties.HTTPTimeout, properties.DefaultHTTPTimeout)
 	if o.HTTPTimeout == 0 {
 		o.HTTPTimeout = 20
 	}
@@ -80,6 +80,7 @@ func (o *OAuthRequest) refreshToken(refreshToken string) (string, error) {
 			message: Timeout,
 		}
 	}
+
 	tokens := &tokenExchange{}
 	err = json.Unmarshal(body, &tokens)
 	if err != nil {
@@ -87,20 +88,17 @@ func (o *OAuthRequest) refreshToken(refreshToken string) (string, error) {
 			message: TokenRefreshFailed,
 		}
 	}
+
 	// add tokens to cache
-	o.Env.Cache().Set(o.AccessTokenKey, tokens.AccessToken, tokens.ExpiresIn/60)
-	o.Env.Cache().Set(o.RefreshTokenKey, tokens.RefreshToken, 2*525960) // it should never expire unless revoked, default to 2 year
+	cache.Device.Set(o.AccessTokenKey, tokens.AccessToken, cache.ToDuration(tokens.ExpiresIn))
+	cache.Device.Set(o.RefreshTokenKey, tokens.RefreshToken, cache.TWOYEARS)
 	return tokens.AccessToken, nil
 }
 
-func OauthResult[a any](o *OAuthRequest, url string, body io.Reader, requestModifiers ...RequestModifier) (a, error) {
-	if data, err := getCacheValue[a](&o.Request, url); err == nil {
-		return data, nil
-	}
-
+func (o *OAuthRequest) Result[T any](url string, body io.Reader, requestModifiers ...RequestModifier) (T, error) {
 	accessToken, err := o.getAccessToken()
 	if err != nil {
-		var data a
+		var data T
 		return data, err
 	}
 
@@ -115,5 +113,5 @@ func OauthResult[a any](o *OAuthRequest, url string, body io.Reader, requestModi
 
 	requestModifiers = append(requestModifiers, addAuthHeader)
 
-	return do[a](&o.Request, url, body, requestModifiers...)
+	return o.Do[T](url, body, requestModifiers...)
 }

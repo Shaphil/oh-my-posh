@@ -5,11 +5,10 @@ import (
 	"path"
 	"testing"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 	"github.com/stretchr/testify/assert"
-	testify_ "github.com/stretchr/testify/mock"
 )
 
 const (
@@ -37,8 +36,8 @@ func TestArgocdGetConfigFromOpts(t *testing.T) {
 		env.On("Getenv", argocdOptsEnv).Return(tc.Opts)
 
 		argocd := &Argocd{
-			env:   env,
-			props: properties.Map{},
+			env:     env,
+			options: options.Map{},
 		}
 		config := argocd.getConfigFromOpts()
 		assert.Equal(t, tc.Expected, config, tc.Case)
@@ -63,8 +62,8 @@ func TestArgocdGetConfigPath(t *testing.T) {
 		env.On("Getenv", argocdOptsEnv).Return(tc.Opts)
 
 		argocd := &Argocd{
-			env:   env,
-			props: properties.Map{},
+			env:     env,
+			options: options.Map{},
 		}
 		assert.Equal(t, tc.Expected, argocd.getConfigPath())
 	}
@@ -73,11 +72,11 @@ func TestArgocdGetConfigPath(t *testing.T) {
 func TestArgocdParseConfig(t *testing.T) {
 	configFile := "/Users/posh/.config/argocd/config"
 	cases := []struct {
+		ExpectedContext ArgocdContext
 		Case            string
 		Config          string
-		Expected        bool
 		ExpectedError   string
-		ExpectedContext ArgocdContext
+		Expected        bool
 	}{
 		{Case: "missing or empty yaml", Config: "", ExpectedError: argocdInvalidYaml},
 		{
@@ -156,11 +155,10 @@ users:
 	for _, tc := range cases {
 		env := new(mock.Environment)
 		env.On("FileContent", configFile).Return(tc.Config)
-		env.On("Error", testify_.Anything).Return()
 
 		argocd := &Argocd{
-			env:   env,
-			props: properties.Map{},
+			env:     env,
+			options: options.Map{},
 		}
 		if len(tc.ExpectedError) > 0 {
 			_, err := argocd.parseConfig(configFile)
@@ -177,14 +175,14 @@ users:
 func TestArgocdSegment(t *testing.T) {
 	configFile := path.Join(poshHome, ".config", "argocd", "config")
 	cases := []struct {
+		ExpectedContext ArgocdContext
 		Case            string
 		Opts            string
 		Config          string
 		Template        string
 		ExpectedString  string
-		ExpectedEnabled bool
 		ExpectedError   string
-		ExpectedContext ArgocdContext
+		ExpectedEnabled bool
 	}{
 		{
 			Case: "default template",
@@ -251,13 +249,10 @@ servers:
 		env.On("Home").Return(poshHome)
 		env.On("Getenv", argocdOptsEnv).Return(tc.Opts)
 		env.On("FileContent", configFile).Return(tc.Config)
-		env.On("Error", testify_.Anything).Return()
 		env.On("Flags").Return(&runtime.Flags{})
 
-		argocd := &Argocd{
-			env:   env,
-			props: properties.Map{},
-		}
+		argocd := &Argocd{}
+		argocd.Init(options.Map{}, env)
 
 		assert.Equal(t, tc.ExpectedEnabled, argocd.Enabled(), tc.Case)
 

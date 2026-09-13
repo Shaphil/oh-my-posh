@@ -1,14 +1,13 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
-// https://github.com/microsoft/vscode-dev-containers/tree/v0.177.0/containers/go
+// For format details, see https://containers.dev/implementors/json_reference.
+// For config options, see the README at: https://github.com/devcontainers/images/tree/main/src/go
 {
   "name": "oh-my-posh",
   "build": {
     "dockerfile": "Dockerfile",
     "args": {
-      // Update the VARIANT arg to pick a version of Go: 1, 1.16, 1.17
-      // Append -bullseye or -buster to pin to an OS version.
-      // Use -bullseye variants on local arm64/Apple Silicon.
-      "VARIANT": "1-1.22-bullseye",
+      // Update the VARIANT arg to pick a version of Go: 1, 1.26, 1.27
+      // Append -trixie, -bookworm or -bullseye to pin to an OS version.
+      "VARIANT": "2-1.27-trixie",
 
       // Override me with your own timezone:
       "TZ": "UTC",
@@ -17,7 +16,7 @@
 
       "NODE_VERSION": "lts/*",
       //Powershell version
-      "PS_VERSION": "7.2.7"
+      "PS_VERSION": "7.6.0"
     }
   },
   "runArgs": [
@@ -58,24 +57,25 @@
           }
         },
         "terminal.integrated.defaultProfile.linux": "pwsh",
-        "terminal.integrated.defaultProfile.windows": "pwsh",
+        "terminal.integrated.defaultProfile.windows": "PowerShell",
         "terminal.integrated.defaultProfile.osx": "pwsh",
         "terminal.integrated.shellIntegration.enabled": false,
         "tasks.statusbar.default.hide": true
       },
       "extensions": [
-        "actboy168.tasks",
-        "eamodio.gitlens",
-        "tamasfe.even-better-toml",
+        "bmalehorn.vscode-fish",
         "davidanson.vscode-markdownlint",
-        "editorconfig.editorconfig",
+        "elves.elvish",
         "esbenp.prettier-vscode",
         "github.vscode-pull-request-github",
         "golang.go",
+        "jnoortheen.xonsh",
+        "ms-azuretools.vscode-azurefunctions",
         "ms-vscode.powershell",
         "redhat.vscode-yaml",
-        "yzhang.markdown-all-in-one",
-        "ms-azuretools.vscode-azurefunctions"
+        "sumneko.lua",
+        "tamasfe.even-better-toml",
+        "yzhang.markdown-all-in-one"
       ]
     }
   },

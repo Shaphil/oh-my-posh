@@ -3,9 +3,10 @@ package segments
 import (
 	"testing"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,12 +17,8 @@ func TestMercurialEnabledToolNotFound(t *testing.T) {
 	env.On("GOOS").Return("")
 	env.On("IsWsl").Return(false)
 
-	hg := &Mercurial{
-		scm: scm{
-			env:   env,
-			props: properties.Map{},
-		},
-	}
+	hg := &Mercurial{}
+	hg.Init(options.Map{}, env)
 
 	assert.False(t, hg.Enabled())
 }
@@ -42,31 +39,27 @@ func TestMercurialEnabledInWorkingDirectory(t *testing.T) {
 	env.On("Home").Return(poshHome)
 	env.On("Getenv", poshGitEnv).Return("")
 
-	hg := &Mercurial{
-		scm: scm{
-			env:   env,
-			props: properties.Map{},
-		},
-	}
+	hg := &Mercurial{}
+	hg.Init(options.Map{}, env)
 
 	assert.True(t, hg.Enabled())
-	assert.Equal(t, fileInfo.Path, hg.workingDir)
-	assert.Equal(t, fileInfo.Path, hg.realDir)
+	assert.Equal(t, fileInfo.Path, hg.mainSCMDir)
+	assert.Equal(t, fileInfo.Path, hg.repoRootDir)
 }
 
 func TestMercurialGetIdInfo(t *testing.T) {
 	cases := []struct {
+		ExpectedWorking           *MercurialStatus
 		Case                      string
 		LogOutput                 string
 		StatusOutput              string
-		ExpectedWorking           *MercurialStatus
 		ExpectedBranch            string
 		ExpectedChangeSetID       string
 		ExpectedShortID           string
 		ExpectedLocalCommitNumber string
-		ExpectedIsTip             bool
 		ExpectedBookmarks         []string
 		ExpectedTags              []string
+		ExpectedIsTip             bool
 	}{
 		{
 			Case:         "nochanges_tip",
@@ -142,9 +135,8 @@ A Added.File
 			ParentFolder: "/dir",
 			IsDir:        true,
 		}
-		props := properties.Map{
-			FetchStatus: true,
-		}
+
+		props := options.Map{}
 
 		env := new(mock.Environment)
 		env.On("InWSLSharedDrive").Return(false)
@@ -158,20 +150,18 @@ A Added.File
 		env.MockHgCommand(fileInfo.Path, tc.LogOutput, "log", "-r", ".", "--template", hgLogTemplate)
 		env.MockHgCommand(fileInfo.Path, tc.StatusOutput, "status")
 
-		hg := &Mercurial{
-			scm: scm{
-				env:   env,
-				props: props,
-			},
-		}
+		hg := &Mercurial{}
+		hg.Init(props, env)
+		// the status probe is derived from template references now
+		hg.SetReferencedFields(template.RefSet{Fields: mercurialStatusFields, Analyzable: true})
 
 		if tc.ExpectedWorking != nil {
 			tc.ExpectedWorking.Formats = map[string]string{}
 		}
 
 		assert.True(t, hg.Enabled())
-		assert.Equal(t, fileInfo.Path, hg.workingDir)
-		assert.Equal(t, fileInfo.Path, hg.realDir)
+		assert.Equal(t, fileInfo.Path, hg.mainSCMDir)
+		assert.Equal(t, fileInfo.Path, hg.repoRootDir)
 		assert.Equal(t, tc.ExpectedWorking, hg.Working, tc.Case)
 		assert.Equal(t, tc.ExpectedBranch, hg.Branch, tc.Case)
 		assert.Equal(t, tc.ExpectedChangeSetID, hg.ChangeSetID, tc.Case)

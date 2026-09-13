@@ -1,13 +1,11 @@
 package segments
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/regex"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 )
 
 type PlasticStatus struct {
@@ -27,24 +25,27 @@ func (s *PlasticStatus) add(code string) {
 	}
 }
 
+// plasticStatusFields lists what setPlasticStatus populates: the single
+// probe this segment derives from its templates (see FieldRefs).
+var plasticStatusFields = []string{"Status", "Behind", "MergePending"}
+
 type Plastic struct {
-	scm
-
-	Status       *PlasticStatus
+	Status                 *PlasticStatus
+	Selector               template.Markup
+	plasticWorkspaceFolder string
+	Scm
+	FieldRefs
 	Behind       bool
-	Selector     string
 	MergePending bool
-
-	plasticWorkspaceFolder string // root folder of workspace
-}
-
-func (p *Plastic) Init(props properties.Properties, env runtime.Environment) {
-	p.props = props
-	p.env = env
 }
 
 func (p *Plastic) Template() string {
 	return " {{ .Selector }} "
+}
+
+// Activation gates on the workspace marker Enabled searches for.
+func (p *Plastic) Activation() Activation {
+	return Activation{ProjectFiles: []string{".plastic"}}
 }
 
 func (p *Plastic) Enabled() bool {
@@ -57,21 +58,26 @@ func (p *Plastic) Enabled() bool {
 		return false
 	}
 
-	if p.shouldIgnoreRootRepository(wkdir.ParentFolder) {
-		return false
-	}
-
 	if !wkdir.IsDir {
 		return false
 	}
 
 	p.plasticWorkspaceFolder = wkdir.ParentFolder
-	displayStatus := p.props.GetBool(FetchStatus, false)
+	displayStatus := p.fetchUnit(plasticStatusFields...)
 	p.setSelector()
 	if displayStatus {
 		p.setPlasticStatus()
 	}
 	return true
+}
+
+func (p *Plastic) CacheKey() (string, bool) {
+	dir, err := p.env.HasParentFilePath(".plastic", true)
+	if err != nil {
+		return "", false
+	}
+
+	return dir.Path, true
 }
 
 func (p *Plastic) setPlasticStatus() {
@@ -82,8 +88,8 @@ func (p *Plastic) setPlasticStatus() {
 	headChangeset := p.getHeadChangeset()
 	p.Behind = headChangeset > currentChangeset
 
-	statusFormats := p.props.GetKeyValueMap(StatusFormats, map[string]string{})
-	p.Status = &PlasticStatus{ScmStatus: ScmStatus{Formats: statusFormats}}
+	statusFormats := p.options.KeyValueMap(StatusFormats, map[string]string{})
+	p.Status = &PlasticStatus{Formats: statusFormats}
 
 	// parse file state
 	p.MergePending = false
@@ -139,29 +145,31 @@ func (p *Plastic) getHeadChangeset() int {
 
 func (p *Plastic) setSelector() {
 	var ref string
-	selector := p.FileContents(p.plasticWorkspaceFolder+"/.plastic/", "plastic.selector")
+	selector := p.fileContent(p.plasticWorkspaceFolder+"/.plastic/", "plastic.selector")
 
 	// changeset
 	ref = p.parseChangesetSelector(selector)
 	if len(ref) > 0 {
-		p.Selector = fmt.Sprintf("%s%s", p.props.GetString(CommitIcon, "\uF417"), ref)
+		p.Selector = template.JoinMarkup(p.options.Markup(CommitIcon, "\uF417"), template.EscapeMarkup(ref))
 		return
 	}
 
 	// fallback to label
 	ref = p.parseLabelSelector(selector)
 	if len(ref) > 0 {
-		p.Selector = fmt.Sprintf("%s%s", p.props.GetString(TagIcon, "\uF412"), ref)
+		p.Selector = template.JoinMarkup(p.options.Markup(TagIcon, "\uF412"), template.EscapeMarkup(ref))
 		return
 	}
 
 	// fallback to branch/smartbranch
 	ref = p.parseBranchSelector(selector)
+
+	branch := template.EscapeMarkup(ref)
 	if len(ref) > 0 {
-		ref = p.formatBranch(ref)
+		branch = p.formatBranch(ref)
 	}
 
-	p.Selector = fmt.Sprintf("%s%s", p.props.GetString(BranchIcon, "\uE0A0"), ref)
+	p.Selector = template.JoinMarkup(p.options.Markup(BranchIcon, "\uE0A0"), branch)
 }
 
 func (p *Plastic) parseChangesetSelector(selector string) string {

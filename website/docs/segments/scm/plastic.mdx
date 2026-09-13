@@ -6,7 +6,7 @@ sidebar_label: Plastic SCM
 
 ## What
 
-Display Plastic SCM information when in a plastic repository. Also works for subfolders.
+Display [Plastic SCM][plastic-scm] information when in a plastic repository. Also works for subfolders.
 For maximum compatibility, make sure your `cm` executable is up-to-date
 (when branch or status information is incorrect for example).
 
@@ -29,11 +29,6 @@ import Config from "@site/src/components/Config.js";
     ],
     template:
       "{{ .Selector }}{{ if .Status.Changed }} \uF044 {{ end }}{{ .Status.String }}",
-    properties: {
-      fetch_status: true,
-      branch_max_length: 25,
-      truncate_symbol: "\u2026",
-    },
   }}
 />
 
@@ -43,29 +38,28 @@ If you want to use the icon of Plastic SCM in the segment, then please help me p
 by leaving a like!
 ![icon](https://www.plasticscm.com/images/icon-logo-plasticscm.svg)
 
-## Properties
+## Options
 
 ### Fetching information
 
-As doing multiple `cm` calls can slow down the prompt experience, we do not fetch information by default.
-You can set the following property to `true` to enable fetching additional information (and populate the template).
+As doing multiple `cm` calls can slow down the prompt experience, the status is fetched only when your
+templates reference one of its fields (`.Status`, `.Behind`, `.MergePending`): fetching is driven entirely
+by what you render. The `fetch_status` option no longer exists and is ignored silently in existing configs.
 
-| Name             |        Type         | Default | Description                                                                                                                                                                                                                                                      |
-| ---------------- | :-----------------: | :-----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fetch_status`   |      `boolean`      | `false` | fetch the local changes                                                                                                                                                                                                                                          |
-| `status_formats` | `map[string]string` |         | a key, value map allowing to override how individual status items are displayed. For example, `"status_formats": { "Added": "Added: %d" }` will display the added count as `Added: 1` instead of `+1`. See the [Status](#status) section for available overrides |
+| Name              |        Type         | Default | Description                                                                                                                                                                                                                                                      |
+| ----------------- | :-----------------: | :-----: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `native_fallback` |      `boolean`      | `false` | when set to `true` and `cm.exe` is not available when inside a WSL2 shared Windows drive, we will fallback to the native `cm` executable to fetch data. Not all information can be displayed in this case                                                        |
+| `status_formats`  | `map[string]string` |         | a key, value map allowing to override how individual status items are displayed. For example, `"status_formats": { "Added": "Added: %d" }` will display the added count as `Added: 1` instead of `+1`. See the [Status](#status) section for available overrides |
 
 ### Icons
 
 #### Branch
 
-| Name                |   Type   | Default  | Description                                                                                              |
-| ------------------- | :------: | :------: | -------------------------------------------------------------------------------------------------------- |
-| `branch_icon`       | `string` | `\uE0A0` | the icon to use in front of the git branch name                                                          |
-| `full_branch_path`  |  `bool`  |  `true`  | display the full branch path instead of only the last part (e.g. `feature/branch` instead of `branch`)   |
-| `branch_max_length` |  `int`   |   `0`    | the max length for the displayed branch name where `0` implies full length                               |
-| `truncate_symbol`   | `string` |          | the icon to display when a branch name is truncated                                                      |
-| `mapped_branches`   | `object` |          | custom glyph/text for specific branches. You can use `*` at the end as a wildcard character for matching |
+| Name              |   Type   | Default  | Description                                                                                                              |
+| ----------------- | :------: | :------: | ------------------------------------------------------------------------------------------------------------------------ |
+| `branch_icon`     | `string` | `\uE0A0` | the icon to use in front of the git branch name                                                                          |
+| `mapped_branches` | `object` |          | custom glyph/text for specific branches. You can use `*` at the end as a wildcard character for matching                 |
+| `branch_template` | `string` |          | a [template][templates] to format that branch name. You can use `{{ .Branch }}` as reference to the original branch name |
 
 #### Selector
 
@@ -79,7 +73,7 @@ You can set the following property to `true` to enable fetching additional infor
 :::note default template
 
 ```template
-{{ .Selector }}
+ {{ .Selector }}
 ```
 
 :::
@@ -116,4 +110,5 @@ Local changes use the following syntax:
 | `v`  | Moved       |
 
 [templates]: /docs/configuration/templates
+[plastic-scm]: https://www.plasticscm.com/
 [fa-issue]: https://github.com/FortAwesome/Font-Awesome/issues/18504

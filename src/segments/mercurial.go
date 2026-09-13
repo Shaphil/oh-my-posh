@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/runtime/path"
 )
 
 const (
@@ -29,21 +30,32 @@ func (s *MercurialStatus) add(code string) {
 	}
 }
 
-type Mercurial struct {
-	scm
+// mercurialStatusFields lists what setMercurialStatus populates: the single
+// probe this segment derives from its templates (see FieldRefs).
+var mercurialStatusFields = []string{
+	workingField, "LocalCommitNumber", "ChangeSetID", "ChangeSetIDShort", "Branch", "Bookmarks", "Tags", "IsTip",
+}
 
+type Mercurial struct {
 	Working           *MercurialStatus
-	IsTip             bool
 	LocalCommitNumber string
 	ChangeSetID       string
 	ChangeSetIDShort  string
 	Branch            string
-	Bookmarks         []string
-	Tags              []string
+	Scm
+	Bookmarks []string
+	Tags      []string
+	FieldRefs
+	IsTip bool
 }
 
 func (hg *Mercurial) Template() string {
 	return "hg {{.Branch}} {{if .LocalCommitNumber}}({{.LocalCommitNumber}}:{{.ChangeSetIDShort}}){{end}}{{range .Bookmarks }} \uf02e {{.}}{{end}}{{range .Tags}} \uf02b {{.}}{{end}}{{if .Working.Changed}} \uf044 {{ .Working.String }}{{ end }}" //nolint: lll
+}
+
+// Activation gates on the repository marker shouldDisplay searches for.
+func (hg *Mercurial) Activation() Activation {
+	return Activation{ProjectFiles: []string{".hg"}}
 }
 
 func (hg *Mercurial) Enabled() bool {
@@ -51,15 +63,24 @@ func (hg *Mercurial) Enabled() bool {
 		return false
 	}
 
-	statusFormats := hg.props.GetKeyValueMap(StatusFormats, map[string]string{})
-	hg.Working = &MercurialStatus{ScmStatus: ScmStatus{Formats: statusFormats}}
+	statusFormats := hg.options.KeyValueMap(StatusFormats, map[string]string{})
+	hg.Working = &MercurialStatus{Formats: statusFormats}
 
-	displayStatus := hg.props.GetBool(FetchStatus, false)
+	displayStatus := hg.fetchUnit(mercurialStatusFields...)
 	if displayStatus {
 		hg.setMercurialStatus()
 	}
 
 	return true
+}
+
+func (hg *Mercurial) CacheKey() (string, bool) {
+	dir, err := hg.env.HasParentFilePath(".hg", true)
+	if err != nil {
+		return "", false
+	}
+
+	return dir.Path, true
 }
 
 func (hg *Mercurial) shouldDisplay() bool {
@@ -72,21 +93,17 @@ func (hg *Mercurial) shouldDisplay() bool {
 		return false
 	}
 
-	if hg.shouldIgnoreRootRepository(hgdir.ParentFolder) {
-		return false
-	}
-
 	hg.setDir(hgdir.ParentFolder)
 
-	hg.workingDir = hgdir.Path
-	hg.rootDir = hgdir.Path
+	hg.mainSCMDir = hgdir.Path
+	hg.scmDir = hgdir.Path
 	// convert the worktree file path to a windows one when in a WSL shared folder
-	hg.realDir = strings.TrimSuffix(hg.convertToWindowsPath(hgdir.Path), "/.hg")
+	hg.repoRootDir = strings.TrimSuffix(hg.convertToWindowsPath(hgdir.Path), "/.hg")
 	return true
 }
 
 func (hg *Mercurial) setDir(dir string) {
-	dir = runtime.ReplaceHomeDirPrefixWithTilde(hg.env, dir) // align with template PWD
+	dir = path.ReplaceHomeDirPrefixWithTilde(dir) // align with template PWD
 	if hg.env.GOOS() == runtime.WINDOWS {
 		hg.Dir = strings.TrimSuffix(dir, `\.hg`)
 		return
@@ -98,11 +115,11 @@ func (hg *Mercurial) setMercurialStatus() {
 	hg.Branch = hg.command
 
 	idString := hg.getHgCommandOutput("log", "-r", ".", "--template", hgLogTemplate)
-	if len(idString) == 0 {
+	if idString == "" {
 		return
 	}
 
-	idSplit := strings.Split(idString, "|")
+	idSplit := strings.SplitN(idString, "|", 6)
 	if len(idSplit) != 5 {
 		return
 	}
@@ -134,19 +151,19 @@ func (hg *Mercurial) setMercurialStatus() {
 
 	statusString := hg.getHgCommandOutput("status")
 
-	if len(statusString) == 0 {
+	if statusString == "" {
 		return
 	}
 
-	statusLines := strings.Split(statusString, "\n")
+	statusLines := strings.SplitSeq(statusString, "\n")
 
-	for _, status := range statusLines {
+	for status := range statusLines {
 		hg.Working.add(status[:1])
 	}
 }
 
 func doSplit(s string) []string {
-	if len(s) == 0 {
+	if s == "" {
 		return []string{}
 	}
 
@@ -160,7 +177,7 @@ func RemoveAtIndex(s []string, index int) []string {
 }
 
 func (hg *Mercurial) getHgCommandOutput(command string, args ...string) string {
-	args = append([]string{"-R", hg.realDir, command}, args...)
+	args = append([]string{"-R", hg.repoRootDir, command}, args...)
 	val, err := hg.env.RunCommand(hg.command, args...)
 	if err != nil {
 		return ""

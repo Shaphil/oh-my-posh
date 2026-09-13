@@ -8,19 +8,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/http"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	httplib "net/http"
 	"net/url"
 )
 
-// WithingsData struct contains the API data
 type WithingsData struct {
-	Status int   `json:"status"`
 	Body   *Body `json:"body"`
+	Status int   `json:"status"`
 }
+
+const withingsActionKey = "action"
 
 type Body struct {
 	MeasureGroups []*MeasureGroup `json:"measuregrps"`
@@ -29,8 +29,8 @@ type Body struct {
 }
 
 type MeasureGroup struct {
-	Measures []*Measure `json:"measures"`
 	Comment  any        `json:"comment"`
+	Measures []*Measure `json:"measures"`
 }
 
 type Measure struct {
@@ -69,7 +69,6 @@ type Activity struct {
 	HrZone3       int    `json:"hr_zone_3"`
 }
 
-// WithingsAPI is a wrapper around http.Oauth
 type WithingsAPI interface {
 	GetMeasures(meastypes string) (*WithingsData, error)
 	GetActivities(activities string) (*WithingsData, error)
@@ -83,10 +82,10 @@ type withingsAPI struct {
 func (w *withingsAPI) GetMeasures(meastypes string) (*WithingsData, error) {
 	twoWeeksAgo := strconv.FormatInt(time.Now().AddDate(0, 0, -14).Unix(), 10)
 	formData := url.Values{
-		"meastypes":  {meastypes},
-		"action":     {"getmeas"},
-		"lastupdate": {twoWeeksAgo},
-		"category":   {"1"},
+		"meastypes":       {meastypes},
+		withingsActionKey: {"getmeas"},
+		"lastupdate":      {twoWeeksAgo},
+		"category":        {"1"},
 	}
 	return w.getWithingsData("https://wbsapi.withings.net/measure", formData)
 }
@@ -95,11 +94,11 @@ func (w *withingsAPI) GetActivities(activities string) (*WithingsData, error) {
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 	today := time.Now().Format("2006-01-02")
 	formData := url.Values{
-		"data_fields":  {activities},
-		"action":       {"getactivity"},
-		"startdateymd": {yesterday},
-		"enddateymd":   {today},
-		"category":     {"1"},
+		"data_fields":     {activities},
+		withingsActionKey: {"getactivity"},
+		"startdateymd":    {yesterday},
+		"enddateymd":      {today},
+		"category":        {"1"},
 	}
 	return w.getWithingsData("https://wbsapi.withings.net/v2/measure", formData)
 }
@@ -112,9 +111,9 @@ func (w *withingsAPI) GetSleep() (*WithingsData, error) {
 	// end at 12PM today
 	end := time.Date(today.Year(), today.Month(), today.Day(), 12, 0, 0, 0, time.UTC).Unix()
 	formData := url.Values{
-		"action":    {"get"},
-		"startdate": {strconv.FormatInt(start, 10)},
-		"enddate":   {strconv.FormatInt(end, 10)},
+		withingsActionKey: {"get"},
+		"startdate":       {strconv.FormatInt(start, 10)},
+		"enddate":         {strconv.FormatInt(end, 10)},
 	}
 	return w.getWithingsData("https://wbsapi.withings.net/v2/sleep", formData)
 }
@@ -127,7 +126,7 @@ func (w *withingsAPI) getWithingsData(endpoint string, formData url.Values) (*Wi
 
 	body := strings.NewReader(formData.Encode())
 
-	data, err := http.OauthResult[*WithingsData](w.OAuthRequest, endpoint, body, modifiers)
+	data, err := w.Result[*WithingsData](endpoint, body, modifiers)
 	if data != nil && data.Status != 0 {
 		return nil, errors.New("Withings API error: " + strconv.Itoa(data.Status))
 	}
@@ -136,13 +135,12 @@ func (w *withingsAPI) getWithingsData(endpoint string, formData url.Values) (*Wi
 }
 
 type Withings struct {
-	props properties.Properties
+	Base
 
-	Weight     float64
+	api        WithingsAPI
 	SleepHours string
+	Weight     float64
 	Steps      int
-
-	api WithingsAPI
 }
 
 const (
@@ -155,6 +153,8 @@ func (w *Withings) Template() string {
 }
 
 func (w *Withings) Enabled() bool {
+	w.initAPI()
+
 	var enabled bool
 	if w.getActivities() {
 		enabled = true
@@ -168,6 +168,26 @@ func (w *Withings) Enabled() bool {
 	return enabled
 }
 
+func (w *Withings) initAPI() {
+	if w.api != nil {
+		return
+	}
+
+	oauth := &http.OAuthRequest{
+		AccessTokenKey:  WithingsAccessTokenKey,
+		RefreshTokenKey: WithingsRefreshTokenKey,
+		SegmentName:     "withings",
+		AccessToken:     w.options.Template(options.AccessToken, "", w),
+		RefreshToken:    w.options.Template(options.RefreshToken, "", w),
+		Env:             w.env,
+		HTTPTimeout:     w.options.Int(options.HTTPTimeout, options.DefaultHTTPTimeout),
+	}
+
+	w.api = &withingsAPI{
+		OAuthRequest: oauth,
+	}
+}
+
 func (w *Withings) getMeasures() bool {
 	data, err := w.api.GetMeasures("1")
 	if err != nil {
@@ -177,7 +197,7 @@ func (w *Withings) getMeasures() bool {
 	if len(data.Body.MeasureGroups) == 0 || len(data.Body.MeasureGroups[0].Measures) == 0 {
 		return false
 	}
-	measure := data.Body.MeasureGroups[0].Measures[0]
+	measure := data.Body.MeasureGroups[len(data.Body.MeasureGroups)-1].Measures[0]
 	weight := measure.Value
 	w.Weight = float64(weight) / math.Pow(10, math.Abs(float64(measure.Unit)))
 	return true
@@ -221,25 +241,4 @@ func (w *Withings) getSleep() bool {
 	w.SleepHours = fmt.Sprintf("%0.1f", sleepHours)
 
 	return true
-}
-
-func (w *Withings) Init(props properties.Properties, env runtime.Environment) {
-	w.props = props
-
-	oauth := &http.OAuthRequest{
-		AccessTokenKey:  WithingsAccessTokenKey,
-		RefreshTokenKey: WithingsRefreshTokenKey,
-		SegmentName:     "withings",
-		AccessToken:     w.props.GetString(properties.AccessToken, ""),
-		RefreshToken:    w.props.GetString(properties.RefreshToken, ""),
-		Request: http.Request{
-			Env:          env,
-			CacheTimeout: w.props.GetInt(properties.CacheTimeout, 30),
-			HTTPTimeout:  w.props.GetInt(properties.HTTPTimeout, properties.DefaultHTTPTimeout),
-		},
-	}
-
-	w.api = &withingsAPI{
-		OAuthRequest: oauth,
-	}
 }

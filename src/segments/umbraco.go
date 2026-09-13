@@ -5,16 +5,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
 )
 
 type Umbraco struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
-	Modern  bool
 	Version string
+	Modern  bool
 }
 
 type CSProj struct {
@@ -31,6 +29,13 @@ type WebConfig struct {
 	} `xml:"appSettings>add"`
 }
 
+// Activation gates on the umbraco folder marker Enabled searches for; the
+// search itself stays in Enabled because its result (the folder location) is
+// what the installation scan reads from.
+func (u *Umbraco) Activation() Activation {
+	return Activation{ProjectFiles: []string{"umbraco", "Umbraco"}}
+}
+
 func (u *Umbraco) Enabled() bool {
 	var location string
 
@@ -43,8 +48,8 @@ func (u *Umbraco) Enabled() bool {
 		}
 	}
 
-	if len(location) == 0 {
-		u.env.Debug("no umbraco folder found in parent directories")
+	if location == "" {
+		log.Debug("no umbraco folder found in parent directories")
 		return false
 	}
 
@@ -86,15 +91,10 @@ func (u *Umbraco) Template() string {
 	return "{{.Version}} "
 }
 
-func (u *Umbraco) Init(props properties.Properties, env runtime.Environment) {
-	u.props = props
-	u.env = env
-}
-
 func (u *Umbraco) TryFindModernUmbraco(configPath string) bool {
 	// Check the passed in filepath is not empty
-	if len(configPath) == 0 {
-		u.env.Debug("no configPath provided")
+	if configPath == "" {
+		log.Debug("no configPath provided")
 		return false
 	}
 
@@ -111,7 +111,7 @@ func (u *Umbraco) TryFindModernUmbraco(configPath string) bool {
 	err := xml.Unmarshal([]byte(contents), &csProjPackages)
 
 	if err != nil {
-		u.env.Debug(err.Error())
+		log.Debug(err.Error())
 	}
 
 	// Loop over all the package references
@@ -129,8 +129,8 @@ func (u *Umbraco) TryFindModernUmbraco(configPath string) bool {
 
 func (u *Umbraco) TryFindLegacyUmbraco(configPath string) bool {
 	// Check the passed in filepath is not empty
-	if len(configPath) == 0 {
-		u.env.Debug("no configPath provided")
+	if configPath == "" {
+		log.Debug("no configPath provided")
 		return false
 	}
 
@@ -147,18 +147,17 @@ func (u *Umbraco) TryFindLegacyUmbraco(configPath string) bool {
 	err := xml.Unmarshal([]byte(contents), &webConfigAppSettings)
 
 	if err != nil {
-		u.env.Debug(err.Error())
+		log.Debug(err.Error())
 	}
 
 	// Loop over all the package references
 	for _, appSetting := range webConfigAppSettings.AppSettings {
 		if strings.EqualFold(appSetting.Key, "umbraco.core.configurationstatus") || strings.EqualFold(appSetting.Key, "umbracoConfigurationStatus") {
 			u.Modern = false
+			u.Version = appSetting.Value
 
-			if len(appSetting.Value) == 0 {
+			if u.Version == "" {
 				u.Version = UNKNOWN
-			} else {
-				u.Version = appSetting.Value
 			}
 
 			return true

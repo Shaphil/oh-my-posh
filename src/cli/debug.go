@@ -2,61 +2,65 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/jandedobbeleer/oh-my-posh/src/build"
+	"github.com/jandedobbeleer/oh-my-posh/src/cache"
 	"github.com/jandedobbeleer/oh-my-posh/src/config"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
 	"github.com/jandedobbeleer/oh-my-posh/src/prompt"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/shell"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 	"github.com/jandedobbeleer/oh-my-posh/src/terminal"
 
-	"github.com/spf13/cobra"
+	"github.com/jandedobbeleer/oh-my-posh/src/cmdtree"
 )
 
-// debugCmd represents the prompt command
-var debugCmd = createDebugCmd()
+var (
+	debugCmd  = createDebugCmd()
+	startTime = time.Now()
+)
 
 func init() {
 	RootCmd.AddCommand(debugCmd)
 }
 
-func createDebugCmd() *cobra.Command {
-	debugCmd := &cobra.Command{
-		Use:       "debug [bash|zsh|fish|powershell|pwsh|cmd|nu|tcsh|elvish|xonsh]",
-		Short:     "Print the prompt in debug mode",
-		Long:      "Print the prompt in debug mode.",
-		ValidArgs: supportedShells,
-		Args:      NoArgsOrOneValidArg,
-		Run: func(cmd *cobra.Command, args []string) {
+func createDebugCmd() *cmdtree.Command {
+	debugCmd := &cmdtree.Command{
+		Use:   "debug",
+		Short: "Print the prompt in debug mode",
+		Long:  "Print the prompt in debug mode.",
+		Run: func(_ *cmdtree.Command, _ []string) {
 			startTime := time.Now()
 
-			if len(args) == 0 {
-				_ = cmd.Help()
-				return
+			log.Enable(plain)
+
+			flags := &runtime.Flags{
+				Debug: true,
+				PWD:   pwd,
+				Shell: shell.GENERIC,
+				Plain: plain,
 			}
 
-			env := &runtime.Terminal{
-				CmdFlags: &runtime.Flags{
-					Config: configFlag,
-					Debug:  true,
-					PWD:    pwd,
-					Shell:  args[0],
-					Plain:  plain,
-				},
-			}
+			env := &runtime.Terminal{}
+			env.Init(flags)
 
-			env.Init()
-			defer env.Close()
+			cache.Init(os.Getenv("POSH_SHELL"))
 
-			cfg := config.Load(env)
+			cfg := getDebugConfig(configFlag)
 
-			// add variables to the environment
-			env.Var = cfg.Var
+			template.Init(env, cfg.Var, cfg.Maps)
+
+			defer func() {
+				template.SaveCache()
+				cache.Close()
+			}()
 
 			terminal.Init(shell.GENERIC)
-			terminal.BackgroundColor = cfg.TerminalBackground.ResolveTemplate(env)
-			terminal.Colors = cfg.MakeColors()
+			terminal.BackgroundColor = cfg.TerminalBackground.ResolveTemplate()
+			terminal.Colors = cfg.MakeColors(env)
 			terminal.Plain = plain
 
 			eng := &prompt.Engine{
@@ -70,7 +74,6 @@ func createDebugCmd() *cobra.Command {
 	}
 
 	debugCmd.Flags().StringVar(&pwd, "pwd", "", "current working directory")
-	debugCmd.Flags().BoolVarP(&plain, "plain", "p", false, "plain text output (no ANSI)")
 
 	// Deprecated flags, should be kept to avoid breaking CLI integration.
 	debugCmd.Flags().StringVar(&shellName, "shell", "", "the shell to print for")
@@ -79,4 +82,13 @@ func createDebugCmd() *cobra.Command {
 	_ = debugCmd.Flags().MarkHidden("shell")
 
 	return debugCmd
+}
+
+func getDebugConfig(configpath string) *config.Config {
+	if len(configpath) != 0 {
+		return config.Load(configpath)
+	}
+
+	reload, _ := cache.Device.Get[bool](config.RELOAD)
+	return config.Get(configpath, reload)
 }

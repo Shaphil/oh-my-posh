@@ -6,13 +6,14 @@ sidebar_label: Transient prompt
 
 import Tabs from "@theme/Tabs";
 import TabItem from "@theme/TabItem";
+import Config from "@site/src/components/Config.js";
 
 :::info
-This feature only works in `nu`, `fish`, `zsh`, `powershell` (`ConstrainedLanguage` mode unsupported) and `cmd` for the time being.
+This feature only works in `nu`, `fish`, `zsh`, `powershell` (`ConstrainedLanguage` mode unsupported), bash (with [ble.sh]) and `cmd` for the time being.
 :::
 
 Transient prompt, when enabled, replaces the prompt with a simpler one to allow more screen real estate.
-You can use go [text/template][go-text-template] templates extended with [sprig][sprig] to enrich the text.
+You can use go [text/template][go-text-template] templates extended with [sprig] to enrich the text.
 All [template][templates] functionality is available, even reusing [cross segment template properties][cstp] from
 the previous primary prompt run.
 
@@ -24,25 +25,25 @@ By enabling Transient Prompt, you can replace the prompt with some other content
 
 ![After Transient](/img/transient-after.gif)
 
+:::tip
+In Zsh, enabling [`multiline_keepprompt`][secondary-prompt] on the secondary prompt keeps the full prompt in place while you type a multi-line command, so the transient prompt takes over once the whole command is submitted rather than on its first line.
+:::
+
 ## Configuration
 
 You need to extend or create a custom theme with your transient prompt. For example:
 
-```json
-{
-    "$schema": "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json",
-    "blocks": [
-        ...
-    ],
-    "transient_prompt": {
-        "background": "transparent",
-        "foreground": "#ffffff",
-        "template": "{{ .Shell }}> "
-    }
-}
-```
+<Config
+  data={{
+    transient_prompt: {
+      background: "transparent",
+      foreground: "#ffffff",
+      template: "{{ .Shell }}> ",
+    },
+  }}
+/>
 
-## Properties
+## Options
 
 | Name                   | Type      | Description                                                                                                                                    |
 | ---------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -51,8 +52,31 @@ You need to extend or create a custom theme with your transient prompt. For exam
 | `background`           | `string`  | [color][colors]                                                                                                                                |
 | `background_templates` | `array`   | [color templates][color-templates]                                                                                                             |
 | `template`             | `string`  | a go [text/template][go-text-template] template extended with [sprig][sprig] utilizing the properties below - defaults to `{{ .Shell }}> `     |
+| `right_template`       | `string`  | a go [text/template][go-text-template] template extended with [sprig][sprig], right-aligned at the end of the line. Supported in `zsh`, `powershell`, and `fish`, designed for single line transient prompts |
 | `filler`               | `string`  | when you want to create a line with a repeated set of characters spanning the width of the terminal. Will be added _after_ the `template` text |
-| `newline`              | `boolean` | add a newline before the prompt                                                                                                                |
+| `newline`              | `boolean` | add a newline before the prompt. The newline will not be printed under the same conditions as for primary prompt [newlines][block-newline].    |
+
+## Template ([info][templates])
+
+On top of the [global template properties][templates], the transient prompt exposes:
+
+| Name           | Type      | Description                                                       |
+| -------------- | --------- | ---------------------------------------------------------------- |
+| `.Interrupted` | `boolean` | whether the previous command was interrupted (e.g. via `Ctrl-C`) |
+
+:::caution
+`.Interrupted` is only set in `zsh`. Every other shell reports `false`, even after a real `Ctrl-C`.
+:::
+
+For example, to show a red `^C` in front of the transient prompt when a command was interrupted:
+
+```json
+{
+  "transient_prompt": {
+    "template": "{{ if .Interrupted }}<red>^C </>{{ end }}{{ .Shell }}> "
+  }
+}
+```
 
 ## Enable the feature
 
@@ -63,11 +87,12 @@ transient prompt configuration. For `cmd`, you can run the command below once to
 clink set prompt.transient always
 ```
 
+[ble.sh]: https://github.com/akinomyoga/ble.sh
 [colors]: /docs/configuration/colors
 [go-text-template]: https://golang.org/pkg/text/template/
-[console-title]: /docs/configuration/title#console-title-template
 [sprig]: https://masterminds.github.io/sprig/
-[clink]: https://chrisant996.github.io/clink/
 [templates]: /docs/configuration/templates
 [color-templates]: /docs/configuration/colors#color-templates
 [cstp]: /docs/configuration/templates#cross-segment-template-properties
+[block-newline]: /docs/configuration/block#newline
+[secondary-prompt]: /docs/configuration/secondary-prompt

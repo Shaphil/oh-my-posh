@@ -5,13 +5,17 @@ on:
     branches:
       - main
     paths:
-      - 'src/**'
-      - 'packages/**'
-      - '.github/workflows/**'
+      - "src/**"
+      - "packages/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
 
 jobs:
   changelog:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.changelog.outputs.version }}
       body: ${{ steps.changelog.outputs.clean_changelog }}
@@ -19,16 +23,35 @@ jobs:
       skipped: ${{ steps.changelog.outputs.skipped }}
     steps:
       - name: Checkout code 👋
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Create changelog ✍️
         id: changelog
-        uses: TriPSs/conventional-changelog-action@3a392e9aa44a72686b0fc13259a90d287dd0877c
+        uses: TriPSs/conventional-changelog-action@469f0e5e35831fbd1962706f29f65daf0a5723f2
         with:
           github-token: ${{ secrets.github_token }}
           skip-version-file: "true"
           output-file: "false"
           skip-commit: "true"
           skip-on-empty: "true"
+          skip-tag: "true"
+
+  android:
+    needs: changelog
+    if: ${{ needs.changelog.outputs.skipped == 'false' }}
+    runs-on: ubuntu-latest
+    container: ghcr.io/jandedobbeleer/golang-android-container:latest
+    steps:
+      - name: Checkout code 👋
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Build 🏗
+        run: |
+          cd src
+          go build -o dist/posh-android-arm -ldflags="-s -w -X 'github.com/jandedobbeleer/oh-my-posh/src/build.Version=${{ needs.changelog.outputs.version }}' -X 'github.com/jandedobbeleer/oh-my-posh/src/build.Date=$(date)'"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-artifact
+          path: src/dist/posh-android-arm
+
   artifacts:
     needs: changelog
     if: ${{ needs.changelog.outputs.skipped == 'false' }}
@@ -36,74 +59,150 @@ jobs:
     defaults:
       run:
         shell: pwsh
-        working-directory: ${{ github.workspace }}/src
+        working-directory: ${{ github.workspace }}/build
     steps:
       - name: Checkout code 👋
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install Go 🗳
         uses: ./.github/workflows/composite/bootstrap-go
-      - name: Tag HEAD 😸
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag ${{ needs.changelog.outputs.tag }}
-      - name: Prerequisites 🔐
-        run: |
-          $PSDefaultParameterValues['Out-File:Encoding']='UTF8'
-
-          $shaSigningKeyLocation = Join-Path -Path $env:RUNNER_TEMP -ChildPath sha_signing_key.pem
-          $env:SIGNING_KEY > $shaSigningKeyLocation
-          Write-Output "SHA_SIGNING_KEY_LOCATION=$shaSigningKeyLocation" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-          # create a base64 encoded value of your certificate using
-          # [convert]::ToBase64String((Get-Content -path "certificate.pfx" -AsByteStream))
-          $pfxPath = Join-Path -Path $env:RUNNER_TEMP -ChildPath "code_signing_cert.pfx"
-          $encodedBytes = [System.Convert]::FromBase64String($env:SIGNING_CERTIFICATE)
-          Set-Content -Path $pfxPath -Value $encodedBytes -AsByteStream
-          Write-Output "SIGNING_CERTIFICATE_LOCATION=$pfxPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-          # requires Windows Dev Kit 10.0.22621.0
-          $signtool = 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.22621.0/x86/signtool.exe'
-          Write-Output "SIGNTOOL=$signtool" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-          # openssl
-          $openssl = 'C:/Program Files/Git/usr/bin/openssl.exe'
-          Write-Output "OPENSSL=$openssl" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Pre Build 😸
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-          SIGNING_CERTIFICATE: ${{ secrets.CERTIFICATE }}
+        run: |
+          ./pre.ps1 -Version ${{ needs.changelog.outputs.version }} -SDKVersion "10.0.26100.0"
       - name: Run GoReleaser 🚀
-        uses: goreleaser/goreleaser-action@286f3b13b1b49da4ac219696163fb8c1c93e1200
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94
         with:
           distribution: goreleaser
-          version: latest
+          version: v2.3.2
           args: release --clean --skip publish
           workdir: src
         env:
-          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
-      - name: Zip theme files 🤐
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      - name: Package Go module dependencies 📦
+        working-directory: ${{ github.workspace }}/src
         run: |
-          $compress = @{
-            Path = "../themes/*.omp.*"
-            CompressionLevel = "Fastest"
-            DestinationPath = "./dist/themes.zip"
-          }
-          Compress-Archive @compress
-      - name: Add hashes 🤫
+          $env:GOMODCACHE = Join-Path $env:RUNNER_TEMP "gomodcache"
+          go mod download -modcacherw
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          tar -acf "dist/oh-my-posh-${{ needs.changelog.outputs.version }}-deps.tar.xz" -C $env:RUNNER_TEMP gomodcache
+      - name: Post Build 🤐
         run: |
-          Get-ChildItem ./dist -Exclude *.yaml,*.sig | Get-Unique |
-          Foreach-Object {
-            $zipHash = Get-FileHash $_.FullName -Algorithm SHA256
-            $zipHash.Hash | Out-File -Encoding 'UTF8' "./dist/$($_.Name).sha256"
-          }
-      - name: Release 🎓
-        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191
+          ./post.ps1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: build-artifacts
+          path: |
+            src/dist/posh-*
+            src/dist/themes.*
+            src/dist/checksums.*
+            src/dist/*-deps.tar.xz
+  msix:
+    needs:
+      - changelog
+      - artifacts
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ${{ github.workspace }}/packages/msix
+    steps:
+      - name: Checkout code 👋
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: build-artifacts
+          path: dist
+      - name: Build installer 📦
+        id: build
+        env:
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          $version = '${{ needs.changelog.outputs.version }}'.TrimStart("v")
+          ./build.ps1 -Architecture ${{ matrix.arch }}  -Version $version -Copy -Sign -SDKVersion "10.0.26100.0"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: msix-artifact-${{ matrix.arch }}
+          path: |
+            packages/msix/out/install-${{ matrix.arch }}.msix
+            packages/msix/out/install-${{ matrix.arch }}.appinstaller
+  release:
+    runs-on: ubuntu-latest
+    needs:
+      - changelog
+      - artifacts
+      - msix
+      - android
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          merge-multiple: true
+      - name: Upload version file
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.CDN_CONNECTIONSTRING }}
+        run: |
+          echo v${{ needs.changelog.outputs.version }} > version.txt
+          az storage blob upload-batch --destination releases/v${{ needs.changelog.outputs.version }} --source .
+          az storage blob upload-batch --destination releases/v${{ needs.changelog.outputs.version }} --overwrite true --source . --pattern "*.appinstaller" --content-type "application/appinstaller"
+          az storage blob upload-batch --destination releases/latest --overwrite true --source .
+          az storage blob upload-batch --destination releases/latest --overwrite true --source . --pattern "*.appinstaller" --content-type "application/appinstaller"
+      - name: Create draft release 📝
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
           tag_name: ${{ needs.changelog.outputs.tag }}
           body: ${{ needs.changelog.outputs.body }}
           fail_on_unmatched_files: true
+          draft: true
           token: ${{ secrets.GH_PAT }}
           files: |
-            src/dist/posh-*
-            src/dist/themes.*
-            src/dist/checksums.*
+            *
+      - name: Publish release 🎓
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: gh release edit ${{ needs.changelog.outputs.tag }} --draft=false --repo ${{ github.repository }}
+  winget:
+    runs-on: windows-latest
+    needs:
+      - changelog
+      - release
+    env:
+      WINGETCREATE_TOKEN: ${{ secrets.WINGETCREATE_TOKEN }}
+    steps:
+    - name: Create manifest and submit PR 📦
+      shell: pwsh
+      run: |
+        Write-Host "Preparing to submit to WinGet repository..." -ForegroundColor Green
+
+        # Install the latest wingetcreate exe
+        # Need to do things this way, see https://github.com/PowerShell/PowerShell/issues/13138
+        Write-Verbose "Importing Appx module using Windows PowerShell compatibility"
+        Import-Module Appx -UseWindowsPowerShell -ErrorAction Stop
+
+        # Download and install Winget-Create msixbundle
+        $appxBundleFile = Join-Path -Path $env:TEMP -ChildPath "wingetcreate.msixbundle"
+        Write-Verbose "Downloading wingetcreate to: $appxBundleFile"
+
+        Invoke-WebRequest -Uri "https://aka.ms/wingetcreate/latest/msixbundle" -OutFile $appxBundleFile -ErrorAction Stop
+        Add-AppxPackage -Path $appxBundleFile -ErrorAction Stop
+
+        Write-Verbose "Successfully installed wingetcreate"
+
+        # Submit the PR to WinGet repository
+        Write-Host "Submitting pull request to WinGet repository..." -ForegroundColor Green
+
+        $version = "${{ needs.changelog.outputs.tag }}"
+        $version = $version.TrimStart('v')
+
+        $urls = @(
+            "https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/v$version/install-x64.msix|x64",
+            "https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/v$version/install-arm64.msix|arm64"
+        )
+
+        wingetcreate update JanDeDobbeleer.OhMyPosh --version $version --token $env:WINGETCREATE_TOKEN --submit --urls $urls

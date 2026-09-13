@@ -1,56 +1,38 @@
 package segments
 
-import (
-	"encoding/json"
-	"fmt"
-	"path/filepath"
-
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-)
-
 type Nx struct {
-	language
+	Language
 }
 
 func (a *Nx) Template() string {
 	return languageTemplate
 }
 
-func (a *Nx) Init(props properties.Properties, env runtime.Environment) {
-	a.language = language{
-		env:        env,
-		props:      props,
-		extensions: []string{"workspace.json", "nx.json"},
-		commands: []*cmd{
-			{
-				regex:      `(?:(?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+))))`,
-				getVersion: a.getVersion,
-			},
-		},
-		versionURLTemplate: "https://github.com/nrwl/nx/releases/tag/{{.Full}}",
-	}
+func (a *Nx) Enabled() bool {
+	a.loadSpec()
+
+	return a.Language.Enabled()
 }
 
-func (a *Nx) Enabled() bool {
-	return a.language.Enabled()
+// Activation implements the activation gate; see Language.activation.
+func (a *Nx) Activation() Activation {
+	a.loadSpec()
+
+	return a.activation()
+}
+
+func (a *Nx) loadSpec() {
+	a.extensions = []string{"workspace.json", "nx.json"}
+	a.tooling = map[string]*cmd{
+		"nx": {
+			regex:      versionRegexPrefixed,
+			getVersion: a.getVersion,
+		},
+	}
+	a.defaultTooling = []string{"nx"}
+	a.versionURLTemplate = "https://github.com/nrwl/nx/releases/tag/{{.Full}}"
 }
 
 func (a *Nx) getVersion() (string, error) {
-	return getNodePackageVersion(a.language.env, "nx")
-}
-
-func getNodePackageVersion(env runtime.Environment, nodePackage string) (string, error) {
-	const fileName string = "package.json"
-	folder := filepath.Join(env.Pwd(), "node_modules", nodePackage)
-	if !env.HasFilesInDir(folder, fileName) {
-		return "", fmt.Errorf("%s not found in %s", fileName, folder)
-	}
-	content := env.FileContent(filepath.Join(folder, fileName))
-	var data ProjectData
-	err := json.Unmarshal([]byte(content), &data)
-	if err != nil {
-		return "", err
-	}
-	return data.Version, nil
+	return a.nodePackageVersion("nx")
 }

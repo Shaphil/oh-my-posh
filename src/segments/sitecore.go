@@ -4,20 +4,18 @@ import (
 	"encoding/json"
 	"path"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 )
 
 const (
 	sitecoreFileName   = "sitecore.json"
 	sitecoreFolderName = ".sitecore"
 	userFileName       = "user.json"
-	defaultEnpointName = "default"
 )
 
 type Sitecore struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
 	EndpointName string
 	CmHost       string
@@ -28,29 +26,39 @@ type EndpointConfig struct {
 }
 
 type UserConfig struct {
-	DefaultEndpoint string                    `json:"defaultEndpoint"`
 	Endpoints       map[string]EndpointConfig `json:"endpoints"`
+	DefaultEndpoint string                    `json:"defaultEndpoint"`
 }
 
+// Activation gates on the sitecore.json marker in the cwd; the
+// .sitecore/user.json companion check stays in Enabled only (it looks
+// inside a subdirectory, which a cwd file glob cannot express).
+func (s *Sitecore) Activation() Activation {
+	return Activation{FileGlobs: []string{sitecoreFileName}}
+}
+
+// Enabled re-verifies the sitecore.json presence even though a passing gate
+// implies it: Force and pinned data bypass the gate, so Enabled must stay
+// standalone-correct. The re-check hits the memoized directory listing.
 func (s *Sitecore) Enabled() bool {
 	if !s.env.HasFiles(sitecoreFileName) || !s.env.HasFilesInDir(sitecoreFolderName, userFileName) {
-		s.env.Debug("sitecore cli configuration files were not found")
+		log.Debug("sitecore cli configuration files were not found")
 		return false
 	}
 
 	var userConfig, err = getUserConfig(s)
 
 	if err != nil {
-		s.env.Error(err)
+		log.Error(err)
 		return false
 	}
 
 	s.EndpointName = userConfig.getDefaultEndpoint()
 
-	displayDefault := s.props.GetBool(properties.DisplayDefault, true)
+	displayDefault := s.options.Bool(options.DisplayDefault, true)
 
-	if !displayDefault && s.EndpointName == defaultEnpointName {
-		s.env.Debug("displaying of the default environment is turned off")
+	if !displayDefault && s.EndpointName == defaultStr {
+		log.Debug("displaying of the default environment is turned off")
 		return false
 	}
 
@@ -63,11 +71,6 @@ func (s *Sitecore) Enabled() bool {
 
 func (s *Sitecore) Template() string {
 	return "{{ .EndpointName }} {{ if .CmHost }}({{ .CmHost }}){{ end }}"
-}
-
-func (s *Sitecore) Init(props properties.Properties, env runtime.Environment) {
-	s.props = props
-	s.env = env
 }
 
 func getUserConfig(s *Sitecore) (*UserConfig, error) {
@@ -86,7 +89,7 @@ func (u *UserConfig) getDefaultEndpoint() string {
 		return u.DefaultEndpoint
 	}
 
-	return defaultEnpointName
+	return defaultStr
 }
 
 func (u *UserConfig) getEndpoint(name string) *EndpointConfig {

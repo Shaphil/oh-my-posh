@@ -1,29 +1,23 @@
 package segments
 
 import (
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/battery"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 )
 
 type Battery struct {
-	props properties.Properties
-	env   runtime.Environment
-
-	*battery.Info
+	Base
 	Error string
-	Icon  string
+	Icon  template.Markup
+	battery.Info
 }
 
 const (
-	// ChargingIcon to display when charging
-	ChargingIcon properties.Property = "charging_icon"
-	// DischargingIcon o display when discharging
-	DischargingIcon properties.Property = "discharging_icon"
-	// ChargedIcon to display when fully charged
-	ChargedIcon properties.Property = "charged_icon"
-	// NotChargingIcon to display when on AC power
-	NotChargingIcon properties.Property = "not_charging_icon"
+	ChargingIcon    options.Option = "charging_icon"
+	DischargingIcon options.Option = "discharging_icon"
+	ChargedIcon     options.Option = "charged_icon"
+	NotChargingIcon options.Option = "not_charging_icon"
 )
 
 func (b *Battery) Template() string {
@@ -36,27 +30,25 @@ func (b *Battery) Enabled() bool {
 		return false
 	}
 
-	var err error
-	b.Info, err = b.env.BatteryState()
+	info, err := b.env.BatteryState()
 
 	if !b.enabledWhileError(err) {
 		return false
 	}
 
-	// case on computer without batteries(no error, empty array)
-	if err == nil && b.Info == nil {
-		return false
+	if info != nil {
+		b.Info = *info
 	}
 
-	switch b.Info.State {
+	switch b.State {
 	case battery.Discharging:
-		b.Icon = b.props.GetString(DischargingIcon, "")
+		b.Icon = b.options.Markup(DischargingIcon, "")
 	case battery.NotCharging:
-		b.Icon = b.props.GetString(NotChargingIcon, "")
+		b.Icon = b.options.Markup(NotChargingIcon, "")
 	case battery.Charging:
-		b.Icon = b.props.GetString(ChargingIcon, "")
+		b.Icon = b.options.Markup(ChargingIcon, "")
 	case battery.Full:
-		b.Icon = b.props.GetString(ChargedIcon, "")
+		b.Icon = b.options.Markup(ChargedIcon, "")
 	case battery.Empty, battery.Unknown:
 		return true
 	}
@@ -70,7 +62,7 @@ func (b *Battery) enabledWhileError(err error) bool {
 	if _, ok := err.(*battery.NoBatteryError); ok {
 		return false
 	}
-	displayError := b.props.GetBool(properties.DisplayError, false)
+	displayError := b.options.Bool(options.DisplayError, false)
 	if !displayError {
 		return false
 	}
@@ -82,9 +74,4 @@ func (b *Battery) enabledWhileError(err error) bool {
 	b.Percentage = 100
 	b.State = battery.Full
 	return true
-}
-
-func (b *Battery) Init(props properties.Properties, env runtime.Environment) {
-	b.props = props
-	b.env = env
 }

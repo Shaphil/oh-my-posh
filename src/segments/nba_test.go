@@ -6,12 +6,10 @@ import (
 	"testing"
 	"time"
 
-	cache_ "github.com/jandedobbeleer/oh-my-posh/src/cache/mock"
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	"github.com/stretchr/testify/assert"
-	testify_ "github.com/stretchr/testify/mock"
 )
 
 func getTestData(file string) string {
@@ -19,21 +17,20 @@ func getTestData(file string) string {
 	return string(content)
 }
 
-// create Test segment for NBA segment
 func TestNBASegment(t *testing.T) {
 	jsonScheduleData := getTestData("nba/schedule.json")
 	jsonScoreData := getTestData("nba/score.json")
 
 	cases := []struct {
+		Error           error
 		Case            string
 		JSONResponse    string
 		ExpectedString  string
-		ExpectedEnabled bool
-		CacheTimeout    int
-		CacheFoundFail  bool
 		TeamName        string
+		CacheTimeout    int
 		DaysOffset      int
-		Error           error
+		ExpectedEnabled bool
+		CacheFoundFail  bool
 	}{
 		{
 			Case:            "Team (Home Team) Scheduled Game",
@@ -76,14 +73,11 @@ func TestNBASegment(t *testing.T) {
 
 	for _, tc := range cases {
 		env := &mock.Environment{}
-		props := properties.Map{
-			properties.CacheTimeout: tc.CacheTimeout,
-			TeamName:                tc.TeamName,
-			DaysOffset:              tc.DaysOffset,
+		props := options.Map{
+			TeamName:   tc.TeamName,
+			DaysOffset: tc.DaysOffset,
 		}
 
-		env.On("Error", testify_.Anything)
-		env.On("Debug", testify_.Anything)
 		env.On("HTTPRequest", NBAScoreURL).Return([]byte(tc.JSONResponse), tc.Error)
 
 		// Add all the daysOffset to the http request responses
@@ -96,20 +90,8 @@ func TestNBASegment(t *testing.T) {
 			env.On("HTTPRequest", scheduleURLEndpoint).Return([]byte(tc.JSONResponse), tc.Error)
 		}
 
-		nba := &Nba{
-			props: props,
-			env:   env,
-		}
-
-		cachedScheduleKey := fmt.Sprintf("%s%s", tc.TeamName, "schedule")
-		cachedScoreKey := fmt.Sprintf("%s%s", tc.TeamName, "score")
-
-		cache := &cache_.Cache{}
-		cache.On("Get", cachedScheduleKey).Return(nba.getGameNotFoundData(), tc.CacheFoundFail)
-		cache.On("Get", cachedScoreKey).Return(nba.getGameNotFoundData(), tc.CacheFoundFail)
-		cache.On("Set", cachedScheduleKey, nba.getGameNotFoundData(), tc.CacheTimeout).Return()
-		cache.On("Set", cachedScoreKey, nba.getGameNotFoundData(), tc.CacheTimeout).Return()
-		env.On("Cache").Return(cache)
+		nba := &Nba{}
+		nba.Init(props, env)
 
 		enabled := nba.Enabled()
 		assert.Equal(t, tc.ExpectedEnabled, enabled, tc.Case)

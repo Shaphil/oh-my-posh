@@ -8,7 +8,6 @@ import (
 	"github.com/jandedobbeleer/oh-my-posh/src/regex"
 )
 
-// SvnStatus represents part of the status of a Svn repository
 type SvnStatus struct {
 	ScmStatus
 }
@@ -38,16 +37,26 @@ const (
 	SVNCOMMAND = "svn"
 )
 
-type Svn struct {
-	scm
+// svnStatusFields lists what the `svn status` scan populates (Branch and
+// BaseRev come from `svn info` unconditionally): the single probe this
+// segment derives from its templates (see FieldRefs).
+var svnStatusFields = []string{workingField}
 
+type Svn struct {
 	Working *SvnStatus
-	BaseRev int
 	Branch  string
+	Scm
+	FieldRefs
+	BaseRev int
 }
 
 func (s *Svn) Template() string {
 	return " \ue0a0{{.Branch}} r{{.BaseRev}} {{.Working.String}} "
+}
+
+// Activation gates on the repository marker shouldDisplay searches for.
+func (s *Svn) Activation() Activation {
+	return Activation{ProjectFiles: []string{".svn"}}
 }
 
 func (s *Svn) Enabled() bool {
@@ -60,6 +69,15 @@ func (s *Svn) Enabled() bool {
 	return true
 }
 
+func (s *Svn) CacheKey() (string, bool) {
+	dir, err := s.env.HasParentFilePath(".svn", true)
+	if err != nil {
+		return "", false
+	}
+
+	return dir.Path, true
+}
+
 func (s *Svn) shouldDisplay() bool {
 	if !s.hasCommand(SVNCOMMAND) {
 		return false
@@ -70,26 +88,22 @@ func (s *Svn) shouldDisplay() bool {
 		return false
 	}
 
-	if s.shouldIgnoreRootRepository(Svndir.ParentFolder) {
-		return false
-	}
-
 	if Svndir.IsDir {
-		s.workingDir = Svndir.Path
-		s.rootDir = Svndir.Path
+		s.mainSCMDir = Svndir.Path
+		s.scmDir = Svndir.Path
 		// convert the worktree file path to a windows one when in a WSL shared folder
-		s.realDir = strings.TrimSuffix(s.convertToWindowsPath(Svndir.Path), "/.svn")
+		s.repoRootDir = strings.TrimSuffix(s.convertToWindowsPath(Svndir.Path), "/.svn")
 		return true
 	}
 
 	// handle worktree
-	s.rootDir = Svndir.Path
+	s.scmDir = Svndir.Path
 	dirPointer := strings.Trim(s.env.FileContent(Svndir.Path), " \r\n")
 	matches := regex.FindNamedRegexMatch(`^Svndir: (?P<dir>.*)$`, dirPointer)
 	if matches != nil && matches["dir"] != "" {
 		// if we open a worktree file in a WSL shared folder, we have to convert it back
 		// to the mounted path
-		s.workingDir = s.convertToLinuxPath(matches["dir"])
+		s.mainSCMDir = s.convertToLinuxPath(matches["dir"])
 	}
 	return false
 }
@@ -102,21 +116,21 @@ func (s *Svn) setSvnStatus() {
 		s.Branch = branch[2:]
 	}
 
-	statusFormats := s.props.GetKeyValueMap(StatusFormats, map[string]string{})
-	s.Working = &SvnStatus{ScmStatus: ScmStatus{Formats: statusFormats}}
+	statusFormats := s.options.KeyValueMap(StatusFormats, map[string]string{})
+	s.Working = &SvnStatus{Formats: statusFormats}
 
-	displayStatus := s.props.GetBool(FetchStatus, false)
+	displayStatus := s.fetchUnit(svnStatusFields...)
 	if !displayStatus {
 		return
 	}
 
 	changes := s.getSvnCommandOutput("status")
-	if len(changes) == 0 {
+	if changes == "" {
 		return
 	}
-	lines := strings.Split(changes, "\n")
-	for _, line := range lines {
-		if len(line) == 0 {
+	lines := strings.SplitSeq(changes, "\n")
+	for line := range lines {
+		if line == "" {
 			continue
 		}
 		// element is the element from someSlice for where we are
@@ -137,7 +151,7 @@ func (s *Svn) Repo() string {
 }
 
 func (s *Svn) getSvnCommandOutput(command string, args ...string) string {
-	args = append([]string{command, s.realDir}, args...)
+	args = append([]string{command, s.repoRootDir}, args...)
 	val, err := s.env.RunCommand(s.command, args...)
 	if err != nil {
 		return ""

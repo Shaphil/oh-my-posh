@@ -5,20 +5,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestFossilStatus(t *testing.T) {
 	cases := []struct {
+		OutputError      error
 		Case             string
 		Output           string
-		OutputError      error
-		HasCommand       bool
 		ExpectedStatus   string
 		ExpectedBranch   string
+		HasCommand       bool
 		ExpectedDisabled bool
 	}{
 		{
@@ -67,18 +67,17 @@ func TestFossilStatus(t *testing.T) {
 		env.On("InWSLSharedDrive").Return(false)
 		env.On("HasCommand", FOSSILCOMMAND).Return(tc.HasCommand)
 		env.On("RunCommand", FOSSILCOMMAND, []string{"status"}).Return(strings.ReplaceAll(tc.Output, "\t", ""), tc.OutputError)
-		f := &Fossil{
-			scm: scm{
-				env:   env,
-				props: properties.Map{},
-			},
-		}
+
+		f := &Fossil{}
+		f.Init(options.Map{}, env)
+
 		got := f.Enabled()
+
 		assert.Equal(t, !tc.ExpectedDisabled, got, tc.Case)
 		if tc.ExpectedDisabled {
 			continue
 		}
-		assert.Equal(t, tc.ExpectedStatus, f.Status.String(), tc.Case)
+		assert.Equal(t, tc.ExpectedStatus, f.Status.String().String(), tc.Case)
 		assert.Equal(t, tc.ExpectedBranch, f.Branch, tc.Case)
 	}
 }

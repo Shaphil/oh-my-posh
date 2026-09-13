@@ -9,17 +9,13 @@
           "foreground_templates": [
             "{{ if .Root }}lightRed{{ end }}"
           ],
-          "properties": {
-            "display_host": true
-          },
           "style": "plain",
           "template": "<{{ if .Root }}lightBlue{{ else }}green{{ end }}>\u250c\u2500\u2500(</>{{ .UserName }}{{ if .Root }}💀{{ else }}㉿{{ end }}{{ .HostName }}<{{ if .Root }}lightBlue{{ else }}green{{ end }}>)</>",
           "type": "session"
         },
         {
           "foreground": "yellow",
-          "properties": {
-            "fetch_version": false,
+          "options": {
             "fetch_virtual_env": true
           },
           "style": "plain",
@@ -28,7 +24,7 @@
         },
         {
           "foreground": "lightWhite",
-          "properties": {
+          "options": {
             "folder_separator_icon": "<#c0c0c0>/</>",
             "style": "full"
           },
@@ -50,7 +46,7 @@
       "segments": [
         {
           "foreground": "white",
-          "properties": {
+          "options": {
             "always_enabled": true,
             "style": "round"
           },
@@ -63,7 +59,7 @@
           "foreground_templates": [
             "{{ if gt .Code 0 }}red{{ end }}"
           ],
-          "properties": {
+          "options": {
             "always_enabled": true
           },
           "style": "plain",
@@ -87,5 +83,5 @@
       "type": "prompt"
     }
   ],
-  "version": 2
+  "version": 4
 }

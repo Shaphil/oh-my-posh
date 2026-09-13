@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 )
 
 type Palette map[Ansi]Ansi
@@ -11,12 +13,11 @@ type Palette map[Ansi]Ansi
 const (
 	paletteKeyPrefix         = "p:"
 	paletteKeyError          = "palette: requested color %s does not exist in palette of colors %s"
-	paletteMaxRecursionDepth = 3 // allows 3 or less recusive resolutions
+	paletteMaxRecursionDepth = 3 // allows 3 or less recursive resolutions
 	paletteRecursiveKeyError = "palette: recursive resolution of color %s returned palette reference %s and reached recursion depth %d"
 )
 
-// ResolveColor gets a color value from the palette using given colorName.
-// If colorName is not a palette reference, it is returned as is.
+// Returns colorName unchanged if it is not a palette reference.
 func (p Palette) ResolveColor(colorName Ansi) (Ansi, error) {
 	return p.resolveColor(colorName, 1, &colorName)
 }
@@ -32,6 +33,15 @@ func (p Palette) resolveColor(colorName Ansi, depth int, originalColorName *Ansi
 	color, ok := p[key]
 	if !ok {
 		return "", &PaletteKeyError{Key: key, palette: p}
+	}
+
+	if strings.Contains(color.String(), "{{") {
+		rendered, err := template.RenderTrusted(color.String(), nil)
+		if err != nil {
+			return "", err
+		}
+
+		color = Ansi(strings.TrimSpace(rendered))
 	}
 
 	if _, isKey := isPaletteKey(color); isKey {
@@ -60,10 +70,9 @@ func isPaletteKey(colorName Ansi) (Ansi, bool) {
 	return paletteKeyPrefix, strings.HasPrefix(colorName.String(), paletteKeyPrefix)
 }
 
-// PaletteKeyError records the missing Palette key.
 type PaletteKeyError struct {
-	Key     Ansi
 	palette Palette
+	Key     Ansi
 }
 
 func (p *PaletteKeyError) Error() string {
@@ -77,8 +86,6 @@ func (p *PaletteKeyError) Error() string {
 	return errorStr
 }
 
-// PaletteRecursiveKeyError records the Palette key and resolved color value (which
-// is also a Palette key)
 type PaletteRecursiveKeyError struct {
 	Key   Ansi
 	Value Ansi
@@ -90,8 +97,24 @@ func (p *PaletteRecursiveKeyError) Error() string {
 	return errorStr
 }
 
-// maybeResolveColor wraps resolveColor and silences possible errors, returning
-// Transparent color by default, as a Block does not know how to handle color errors.
+// resolveShade resolves a darken(...)/lighten(...) call's color argument through the
+// palette, so a reference like darken(p:accent, 20) reaches Defaults.ToAnsi with a
+// concrete color. Returns colorString unchanged when it isn't a shade call.
+func (p Palette) resolveShade(colorString Ansi) (Ansi, error) {
+	dir, inner, percent, ok := colorString.ShadeArgs()
+	if !ok {
+		return colorString, nil
+	}
+
+	resolved, err := p.ResolveColor(inner)
+	if err != nil {
+		return "", err
+	}
+
+	return withShadeCall(dir, resolved, percent), nil
+}
+
+// Returns emptyColor instead of surfacing errors, since a Block has no way to handle color errors.
 func (p Palette) MaybeResolveColor(colorName Ansi) Ansi {
 	color, err := p.ResolveColor(colorName)
 	if err != nil {

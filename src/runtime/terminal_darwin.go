@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
 	"github.com/jandedobbeleer/oh-my-posh/src/regex"
 
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/battery"
@@ -33,15 +34,15 @@ func mapMostLogicalState(state string) battery.State {
 func (term *Terminal) parseBatteryOutput(output string) (*battery.Info, error) {
 	matches := regex.FindNamedRegexMatch(`(?P<PERCENTAGE>[0-9]{1,3})%; (?P<STATE>[a-zA-Z\s]+);`, output)
 	if len(matches) != 2 {
-		err := errors.New("Unable to find battery state based on output")
-		term.Error(err)
+		err := errors.New("unable to find battery state based on output")
+		log.Error(err)
 		return nil, err
 	}
 	var percentage int
 	var err error
 	if percentage, err = strconv.Atoi(matches["PERCENTAGE"]); err != nil {
-		term.Error(err)
-		return nil, errors.New("Unable to parse battery percentage")
+		log.Error(err)
+		return nil, errors.New("unable to parse battery percentage")
 	}
 	return &battery.Info{
 		Percentage: percentage,
@@ -50,14 +51,14 @@ func (term *Terminal) parseBatteryOutput(output string) (*battery.Info, error) {
 }
 
 func (term *Terminal) BatteryState() (*battery.Info, error) {
-	defer term.Trace(time.Now())
+	defer log.Trace(time.Now())
 	output, err := term.RunCommand("pmset", "-g", "batt")
 	if err != nil {
-		term.Error(err)
+		log.Error(err)
 		return nil, err
 	}
 	if !strings.Contains(output, "Battery") {
-		return nil, errors.New("No battery found")
+		return nil, errors.New("no battery found")
 	}
 	return term.parseBatteryOutput(output)
 }

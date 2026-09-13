@@ -6,11 +6,9 @@ import (
 
 	"github.com/alecthomas/assert"
 	"github.com/jandedobbeleer/oh-my-posh/src/cache"
-	cache_ "github.com/jandedobbeleer/oh-my-posh/src/cache/mock"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
-
-	testify_ "github.com/stretchr/testify/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 )
 
 func TestGetAnsiFromColorString(t *testing.T) {
@@ -26,13 +24,17 @@ func TestGetAnsiFromColorString(t *testing.T) {
 		{Case: "Invalid background", Expected: emptyColor, Color: "invalid", Background: true},
 		{Case: "Invalid background", Expected: emptyColor, Color: "invalid", Background: false},
 		{Case: "Hex foreground", Expected: Ansi("38;2;170;187;204"), Color: "#AABBCC", Background: false},
-		{Case: "Hex backgrond", Expected: Ansi("48;2;170;187;204"), Color: "#AABBCC", Background: true},
+		{Case: "Hex background", Expected: Ansi("48;2;170;187;204"), Color: "#AABBCC", Background: true},
 		{Case: "Base 8 foreground", Expected: Ansi("31"), Color: "red", Background: false},
 		{Case: "Base 8 background", Expected: Ansi("41"), Color: "red", Background: true},
 		{Case: "Base 16 foreground", Expected: Ansi("91"), Color: "lightRed", Background: false},
-		{Case: "Base 16 backround", Expected: Ansi("101"), Color: "lightRed", Background: true},
+		{Case: "Base 16 background", Expected: Ansi("101"), Color: "lightRed", Background: true},
 		{Case: "Non true color TERM", Expected: Ansi("38;5;146"), Color: "#AABBCC", Color256: true},
 	}
+
+	origTrueColor := TrueColor
+	t.Cleanup(func() { TrueColor = origTrueColor })
+
 	for _, tc := range cases {
 		ansiColors := &Defaults{}
 		TrueColor = !tc.Color256
@@ -44,11 +46,8 @@ func TestGetAnsiFromColorString(t *testing.T) {
 func TestMakeColors(t *testing.T) {
 	env := &mock.Environment{}
 
-	env.On("Trace", testify_.Anything, testify_.Anything).Return(nil)
-
-	c := &cache_.Cache{}
-	c.On("Get", "accent_color").Return("", true)
-	env.On("Session").Return(c)
+	cache.Device.Set(accentColor, &Set{}, cache.INFINITE)
+	defer cache.Device.DeleteAll()
 
 	env.On("WindowsRegistryKeyValue", `HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM\ColorizationColor`).Return(&runtime.WindowsRegistryValue{}, errors.New("err"))
 	colors := MakeColors(nil, false, "", env)
@@ -68,6 +67,26 @@ func TestMakeColors(t *testing.T) {
 	assert.IsType(t, &Defaults{}, colors.(*Cached).ansiColors.(*PaletteColors).ansiColors)
 }
 
+// A gradient string must round-trip untouched through every String decorator, never mangled
+// by hex/256 parsing or palette resolution, so the terminal writer can render it per cell.
+func TestGradientPassesThroughAnsiColorDecorators(t *testing.T) {
+	gradient := Ansi("linear-gradient(#FF0000, #0000FF)")
+
+	cases := []struct {
+		Colors String
+		Case   string
+	}{
+		{Case: "Defaults", Colors: &Defaults{}},
+		{Case: "PaletteColors", Colors: &PaletteColors{ansiColors: &Defaults{}, palette: testPalette}},
+		{Case: "Cached", Colors: &Cached{ansiColors: &Defaults{}}},
+	}
+
+	for _, tc := range cases {
+		assert.Equal(t, gradient, tc.Colors.ToAnsi(gradient, false), tc.Case)
+		assert.Equal(t, gradient, tc.Colors.ToAnsi(gradient, true), tc.Case)
+	}
+}
+
 func TestAnsiRender(t *testing.T) {
 	cases := []struct {
 		Case     string
@@ -80,16 +99,14 @@ func TestAnsiRender(t *testing.T) {
 
 	for _, tc := range cases {
 		env := new(mock.Environment)
-		env.On("DebugF", testify_.Anything, testify_.Anything).Return(nil)
-		env.On("TemplateCache").Return(&cache.Template{
-			Env: map[string]string{
-				"TERM_PROGRAM": tc.Term,
-			},
-		})
-		env.On("Flags").Return(&runtime.Flags{})
+		env.On("Getenv", "TERM_PROGRAM").Return(tc.Term)
+		env.On("Shell").Return("foo")
+
+		template.Cache = new(cache.Template)
+		template.Init(env, nil, nil)
 
 		ansi := Ansi("{{ if eq \"vscode\" .Env.TERM_PROGRAM }}#123456{{end}}")
-		got := ansi.ResolveTemplate(env)
+		got := ansi.ResolveTemplate()
 
 		assert.Equal(t, tc.Expected, got, tc.Case)
 	}

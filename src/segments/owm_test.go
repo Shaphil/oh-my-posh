@@ -6,12 +6,10 @@ import (
 	"net/url"
 	"testing"
 
-	cache_ "github.com/jandedobbeleer/oh-my-posh/src/cache/mock"
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	"github.com/stretchr/testify/assert"
-	testify_ "github.com/stretchr/testify/mock"
 )
 
 const (
@@ -20,13 +18,13 @@ const (
 
 func TestOWMSegmentSingle(t *testing.T) {
 	cases := []struct {
+		Error               error
 		Case                string
 		Location            string
 		WeatherJSONResponse string
 		ExpectedString      string
-		ExpectedEnabled     bool
 		Template            string
-		Error               error
+		ExpectedEnabled     bool
 	}{
 		{
 			Case:                "Sunny Display",
@@ -74,22 +72,18 @@ func TestOWMSegmentSingle(t *testing.T) {
 
 	for _, tc := range cases {
 		env := &mock.Environment{}
-		props := properties.Map{
-			APIKey:                  "key",
-			Location:                tc.Location,
-			Units:                   "metric",
-			properties.CacheTimeout: 0,
+		props := options.Map{
+			APIKey:   "key",
+			Location: tc.Location,
+			Units:    "metric",
 		}
 
 		location := url.QueryEscape(tc.Location)
 		testURL := fmt.Sprintf(OWMWEATHERAPIURL, location)
 		env.On("HTTPRequest", testURL).Return([]byte(tc.WeatherJSONResponse), tc.Error)
-		env.On("Error", testify_.Anything)
 
-		o := &Owm{
-			props: props,
-			env:   env,
-		}
+		o := &Owm{}
+		o.Init(props, env)
 
 		enabled := o.Enabled()
 		assert.Equal(t, tc.ExpectedEnabled, enabled, tc.Case)
@@ -214,87 +208,16 @@ func TestOWMSegmentIcons(t *testing.T) {
 
 		env.On("HTTPRequest", testURL).Return([]byte(weatherResponse), nil)
 
-		o := &Owm{
-			props: properties.Map{
-				APIKey:                  "key",
-				Location:                "AMSTERDAM,NL",
-				Units:                   "metric",
-				properties.CacheTimeout: 0,
-			},
-			env: env,
+		props := options.Map{
+			APIKey:   "key",
+			Location: "AMSTERDAM,NL",
+			Units:    "metric",
 		}
+
+		o := &Owm{}
+		o.Init(props, env)
 
 		assert.Nil(t, o.setStatus())
 		assert.Equal(t, expectedString, renderTemplate(env, o.Template(), o), tc.Case)
 	}
-
-	// test with hyperlink enabled
-	for _, tc := range cases {
-		env := &mock.Environment{}
-
-		weatherResponse := fmt.Sprintf(`{"weather":[{"icon":"%s"}],"main":{"temp":20.3}}`, tc.IconID)
-		expectedString := fmt.Sprintf("«%s (20°C)»(%s)", tc.ExpectedIconString, testURL)
-
-		env.On("HTTPRequest", testURL).Return([]byte(weatherResponse), nil)
-
-		o := &Owm{
-			props: properties.Map{
-				APIKey:                  "key",
-				Location:                "AMSTERDAM,NL",
-				Units:                   "metric",
-				properties.CacheTimeout: 0,
-			},
-			env: env,
-		}
-
-		assert.Nil(t, o.setStatus())
-		assert.Equal(t, expectedString, renderTemplate(env, "«{{.Weather}} ({{.Temperature}}{{.UnitIcon}})»({{.URL}})", o), tc.Case)
-	}
-}
-
-func TestOWMSegmentFromCacheByGeoName(t *testing.T) {
-	response := fmt.Sprintf(`{"weather":[{"icon":"%s"}],"main":{"temp":20}}`, "01d")
-	expectedString := fmt.Sprintf("%s (20°C)", "\ue30d")
-
-	env := &mock.Environment{}
-	cache := &cache_.Cache{}
-	o := &Owm{
-		props: properties.Map{
-			APIKey:   "key",
-			Location: "AMSTERDAM,NL",
-			Units:    "metric",
-		},
-		env: env,
-	}
-	cache.On("Get", "owm_response").Return(response, true)
-	cache.On("Get", "owm_url").Return("http://api.openweathermap.org/data/2.5/weather?q=AMSTERDAM,NL&units=metric&appid=key", true)
-	cache.On("Set").Return()
-	env.On("Cache").Return(cache)
-
-	assert.Nil(t, o.setStatus())
-	assert.Equal(t, expectedString, renderTemplate(env, o.Template(), o), "should return the cached response")
-}
-
-func TestOWMSegmentFromCacheWithHyperlinkByGeoName(t *testing.T) {
-	response := fmt.Sprintf(`{"weather":[{"icon":"%s"}],"main":{"temp":20}}`, "01d")
-	expectedString := fmt.Sprintf("«%s (20°C)»(http://api.openweathermap.org/data/2.5/weather?q=AMSTERDAM,NL&units=metric&appid=key)", "\ue30d")
-
-	env := &mock.Environment{}
-	cache := &cache_.Cache{}
-
-	o := &Owm{
-		props: properties.Map{
-			APIKey:   "key",
-			Location: "AMSTERDAM,NL",
-			Units:    "metric",
-		},
-		env: env,
-	}
-	cache.On("Get", "owm_response").Return(response, true)
-	cache.On("Get", "owm_url").Return("http://api.openweathermap.org/data/2.5/weather?q=AMSTERDAM,NL&units=metric&appid=key", true)
-	cache.On("Set").Return()
-	env.On("Cache").Return(cache)
-
-	assert.Nil(t, o.setStatus())
-	assert.Equal(t, expectedString, renderTemplate(env, "«{{.Weather}} ({{.Temperature}}{{.UnitIcon}})»({{.URL}})", o))
 }

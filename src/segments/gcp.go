@@ -4,10 +4,10 @@ import (
 	"errors"
 	"path"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 
-	"gopkg.in/ini.v1"
+	"github.com/jandedobbeleer/oh-my-posh/src/ini"
 )
 
 const (
@@ -15,42 +15,38 @@ const (
 )
 
 type Gcp struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
-	Account string
-	Project string
-	Region  string
+	Account      string
+	Project      string
+	Region       string
+	ActiveConfig string
 }
 
 func (g *Gcp) Template() string {
 	return " {{ .Project }} "
 }
 
-func (g *Gcp) Init(props properties.Properties, env runtime.Environment) {
-	g.props = props
-	g.env = env
-}
-
 func (g *Gcp) Enabled() bool {
 	cfgDir := g.getConfigDirectory()
-	configFile, err := g.getActiveConfig(cfgDir)
+	cfgName, err := g.getActiveConfig(cfgDir)
 	if err != nil {
-		g.env.Error(err)
+		log.Error(err)
 		return false
 	}
 
-	cfgpath := path.Join(cfgDir, "configurations", "config_"+configFile)
-	cfg := g.env.FileContent(cfgpath)
+	g.ActiveConfig = cfgName
+	cfgPath := path.Join(cfgDir, "configurations", "config_"+cfgName)
+	cfg := g.env.FileContent(cfgPath)
 
-	if len(cfg) == 0 {
-		g.env.Error(errors.New("config file is empty"))
+	if cfg == "" {
+		log.Error(errors.New("config file is empty"))
 		return false
 	}
 
-	data, err := ini.Load([]byte(cfg))
+	data, err := ini.Load(cfg)
 	if err != nil {
-		g.env.Error(err)
+		log.Error(err)
 		return false
 	}
 
@@ -62,12 +58,18 @@ func (g *Gcp) Enabled() bool {
 }
 
 func (g *Gcp) getActiveConfig(cfgDir string) (string, error) {
+	activeCfg := g.env.Getenv("CLOUDSDK_ACTIVE_CONFIG_NAME")
+	if len(activeCfg) != 0 {
+		return activeCfg, nil
+	}
+
 	ap := path.Join(cfgDir, "active_config")
-	fileContent := g.env.FileContent(ap)
-	if len(fileContent) == 0 {
+	activeCfg = g.env.FileContent(ap)
+	if activeCfg == "" {
 		return "", errors.New(GCPNOACTIVECONFIG)
 	}
-	return fileContent, nil
+
+	return activeCfg, nil
 }
 
 func (g *Gcp) getConfigDirectory() string {

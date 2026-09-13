@@ -4,14 +4,12 @@ import (
 	"errors"
 	"path/filepath"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-	"gopkg.in/yaml.v3"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
+	yaml "go.yaml.in/yaml/v3"
 )
 
 type TalosCTL struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
 	Context string `yaml:"context"`
 }
@@ -20,26 +18,21 @@ func (t *TalosCTL) Template() string {
 	return " {{ .Context}} "
 }
 
-func (t *TalosCTL) Init(props properties.Properties, env runtime.Environment) {
-	t.props = props
-	t.env = env
-}
-
 func (t *TalosCTL) Enabled() bool {
 	cfgDir := filepath.Join(t.env.Home(), ".talos")
 	configFile, err := t.getActiveConfig(cfgDir)
 	if err != nil {
-		t.env.Error(err)
+		log.Error(err)
 		return false
 	}
 
 	err = yaml.Unmarshal([]byte(configFile), t)
 	if err != nil {
-		t.env.Error(err)
+		log.Error(err)
 		return false
 	}
 
-	if len(t.Context) == 0 {
+	if t.Context == "" {
 		return false
 	}
 
@@ -49,8 +42,8 @@ func (t *TalosCTL) Enabled() bool {
 func (t *TalosCTL) getActiveConfig(cfgDir string) (string, error) {
 	activeConfigFile := filepath.Join(cfgDir, "config")
 	activeConfigData := t.env.FileContent(activeConfigFile)
-	if len(activeConfigData) == 0 {
-		return "", errors.New("NO ACTIVE CONFIG FOUND")
+	if activeConfigData == "" {
+		return "", errors.New("no active config found")
 	}
 	return activeConfigData, nil
 }

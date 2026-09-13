@@ -1,22 +1,18 @@
 package color
 
+import "slices"
+
 const (
-	// Transparent implies a transparent color
-	Transparent Ansi = "transparent"
-	// Accent is the OS accent color
-	Accent Ansi = "accent"
-	// ParentBackground takes the previous segment's background color
+	Transparent      Ansi = "transparent"
+	Accent           Ansi = "accent"
 	ParentBackground Ansi = "parentBackground"
-	// ParentForeground takes the previous segment's color
 	ParentForeground Ansi = "parentForeground"
-	// Background takes the current segment's background color
-	Background Ansi = "background"
-	// Foreground takes the current segment's foreground color
-	Foreground Ansi = "foreground"
+	Background       Ansi = "background"
+	Foreground       Ansi = "foreground"
 )
 
 func (color Ansi) isKeyword() bool {
-	switch color { //nolint: exhaustive
+	switch color {
 	case Transparent, ParentBackground, ParentForeground, Background, Foreground:
 		return true
 	default:
@@ -26,29 +22,55 @@ func (color Ansi) isKeyword() bool {
 
 func (color Ansi) Resolve(current *Set, parents []*Set) Ansi {
 	resolveParentColor := func(keyword Ansi) Ansi {
-		for _, parentColor := range parents {
+		// parents is a stack pushed tail-first (see terminal.SetParentColors):
+		// the nearest ancestor is the last element, so walk back-to-front.
+		for _, parentColor := range slices.Backward(parents) {
 			if parentColor == nil {
 				return Transparent
 			}
 
-			switch keyword { //nolint: exhaustive
+			switch keyword {
 			case ParentBackground:
 				keyword = parentColor.Background
 			case ParentForeground:
 				keyword = parentColor.Foreground
 			default:
-				if len(keyword) == 0 {
+				if keyword == "" {
 					return Transparent
 				}
-				return keyword
+				return keyword.GradientLast()
 			}
+
+			if !keyword.IsGradient() {
+				continue
+			}
+
+			// a parent gradient collapses to its last stop; a keyword stop refers to
+			// that SAME parent's colors, never to the child segment asking for the
+			// parent color. A parentBackground/parentForeground stop walks further up
+			// through the next iteration; an unresolvable self-reference degrades to
+			// transparent instead of leaking a keyword the child would misresolve.
+			stop := keyword.GradientLast()
+
+			switch stop { //nolint:exhaustive
+			case Foreground:
+				stop = parentColor.Foreground.GradientLast()
+			case Background:
+				stop = parentColor.Background.GradientLast()
+			}
+
+			if stop.isKeyword() && stop != ParentBackground && stop != ParentForeground && stop != Transparent {
+				return Transparent
+			}
+
+			keyword = stop
 		}
 
-		if len(keyword) == 0 {
+		if keyword == "" {
 			return Transparent
 		}
 
-		return keyword
+		return keyword.GradientLast()
 	}
 
 	resolveKeyword := func(keyword Ansi) Ansi {
@@ -57,7 +79,7 @@ func (color Ansi) Resolve(current *Set, parents []*Set) Ansi {
 			return current.Background
 		case keyword == Foreground && current != nil:
 			return current.Foreground
-		case (keyword == ParentBackground || keyword == ParentForeground) && parents != nil:
+		case (keyword == ParentBackground || keyword == ParentForeground) && len(parents) != 0:
 			return resolveParentColor(keyword)
 		default:
 			return Transparent

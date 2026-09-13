@@ -5,9 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/cache"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 
 	"github.com/alecthomas/assert"
 	testify_ "github.com/stretchr/testify/mock"
@@ -15,19 +17,19 @@ import (
 
 func TestPythonTemplate(t *testing.T) {
 	type ResolveSymlink struct {
-		Path string
 		Err  error
+		Path string
 	}
 	cases := []struct {
+		ResolveSymlink   ResolveSymlink
 		Case             string
 		Expected         string
-		ExpectedDisabled bool
 		Template         string
 		VirtualEnvName   string
-		FetchVersion     bool
 		PythonPath       string
-		ResolveSymlink   ResolveSymlink
 		PyvenvCfg        string
+		ExpectedDisabled bool
+		FetchVersion     bool
 	}{
 		{Case: "No virtual env present", FetchVersion: true, Expected: "3.8.4", Template: "{{ if .Venv }}{{ .Venv }} {{ end }}{{ .Full }}"},
 		{Case: "Virtual env present", FetchVersion: true, Expected: "VENV 3.8.4", VirtualEnvName: "VENV", Template: "{{ if .Venv }}{{ .Venv }} {{ end }}{{ .Full }}"},
@@ -87,6 +89,15 @@ func TestPythonTemplate(t *testing.T) {
 			PyvenvCfg:      "home = /usr/bin/\nprompt = pyvenvCfgPrompt\n",
 			Expected:       "pyvenvCfgPrompt 3.8",
 		},
+		{
+			Case:           "pyvenv.cfg prompt with quotes (pipenv)",
+			FetchVersion:   true,
+			VirtualEnvName: "VENV",
+			PythonPath:     "/home/user/.pyenv/shims/python",
+			Template:       "{{ if .Venv }}{{ .Venv }} {{ end }}{{ .Major }}.{{ .Minor }}",
+			PyvenvCfg:      "home = /usr/bin/\nprompt = \"myproject\"\n",
+			Expected:       "myproject 3.8",
+		},
 	}
 
 	for _, tc := range cases {
@@ -110,12 +121,12 @@ func TestPythonTemplate(t *testing.T) {
 		env.On("PathSeparator").Return("")
 		env.On("ResolveSymlink", testify_.Anything).Return(tc.ResolveSymlink.Path, tc.ResolveSymlink.Err)
 
-		props[properties.FetchVersion] = tc.FetchVersion
 		props[UsePythonVersionFile] = true
 		props[DisplayMode] = DisplayModeAlways
 
 		python := &Python{}
 		python.Init(props, env)
+		setVersionRefs(python, tc.FetchVersion)
 		assert.Equal(t, !tc.ExpectedDisabled, python.Enabled(), tc.Case)
 		assert.Equal(t, tc.Expected, renderTemplate(env, tc.Template, python), tc.Case)
 	}
@@ -123,8 +134,8 @@ func TestPythonTemplate(t *testing.T) {
 
 func TestPythonPythonInContext(t *testing.T) {
 	cases := []struct {
-		Expected       bool
 		VirtualEnvName string
+		Expected       bool
 	}{
 		{Expected: true, VirtualEnvName: "VENV"},
 		{Expected: false, VirtualEnvName: ""},
@@ -142,7 +153,8 @@ func TestPythonPythonInContext(t *testing.T) {
 		env.On("Getenv", "PYENV_VERSION").Return("")
 		env.On("HasParentFilePath", ".python-version", false).Return(&runtime.FileInfo{}, errors.New("no match at root level"))
 		python := &Python{}
-		python.Init(properties.Map{}, env)
+		python.Init(options.Map{}, env)
+		python.loadSpec()
 		python.loadContext()
 		assert.Equal(t, tc.Expected, python.inContext())
 	}
@@ -151,8 +163,8 @@ func TestPythonPythonInContext(t *testing.T) {
 func TestPythonVirtualEnvIgnoreDefaultVenvNames(t *testing.T) {
 	cases := []struct {
 		Expected           string
-		FolderNameFallback bool
 		VirtualEnvName     string
+		FolderNameFallback bool
 	}{
 		{
 			Expected:           "folder",
@@ -194,6 +206,7 @@ func TestPythonVirtualEnvIgnoreDefaultVenvNames(t *testing.T) {
 
 		python := &Python{}
 		python.Init(props, env)
+		python.loadSpec()
 		python.loadContext()
 		assert.Equal(t, tc.Expected, python.Venv)
 	}
@@ -202,9 +215,9 @@ func TestPythonVirtualEnvIgnoreDefaultVenvNames(t *testing.T) {
 func TestPythonVirtualEnvIgnoreCustomVenvNames(t *testing.T) {
 	cases := []struct {
 		Expected           string
-		FolderNameFallback bool
-		DefaultVenvNames   []string
 		VirtualEnvName     string
+		DefaultVenvNames   []string
+		FolderNameFallback bool
 	}{
 		{
 			Expected:           "folder",
@@ -239,7 +252,132 @@ func TestPythonVirtualEnvIgnoreCustomVenvNames(t *testing.T) {
 
 		python := &Python{}
 		python.Init(props, env)
+		python.loadSpec()
 		python.loadContext()
 		assert.Equal(t, tc.Expected, python.Venv)
 	}
+}
+
+func TestPythonUVTooling(t *testing.T) {
+	cases := []struct {
+		Case            string
+		Expected        string
+		UVVersionOutput string
+		Tooling         []string
+		HasUVCommand    bool
+	}{
+		{
+			Case:            "UV enabled and available",
+			Expected:        "3.10.5",
+			Tooling:         []string{"uv"},
+			UVVersionOutput: "Python 3.10.5",
+			HasUVCommand:    true,
+		},
+		{
+			Case:     "Default tooling (no UV)",
+			Expected: "3.8.4",
+			Tooling:  nil, // Use default tooling
+		},
+		{
+			Case:         "UV enabled but not available falls back",
+			Expected:     "3.8.4",
+			Tooling:      []string{"uv", "python"},
+			HasUVCommand: false,
+		},
+	}
+
+	for _, tc := range cases {
+		params := &mockedLanguageParams{
+			cmd:           "python",
+			versionParam:  "--version",
+			versionOutput: "Python 3.8.4",
+			extension:     "*.py",
+		}
+		env, props := getMockedLanguageEnv(params)
+
+		env.On("GOOS").Return("")
+		env.On("PathSeparator").Return("/")
+		env.On("Shell").Return("bash")
+		env.On("CommandPath", testify_.Anything).Return("")
+		env.On("HasFilesInDir", testify_.Anything, "pyvenv.cfg").Return(false)
+		env.On("Getenv", "VIRTUAL_ENV").Return("")
+		env.On("Getenv", "CONDA_ENV_PATH").Return("")
+		env.On("Getenv", "CONDA_DEFAULT_ENV").Return("")
+		env.On("Getenv", "PYENV_VERSION").Return("")
+		env.On("Getenv", "PYENV_ROOT").Return("")
+		env.On("HasParentFilePath", ".python-version", false).Return(&runtime.FileInfo{}, errors.New("no match at root level"))
+
+		// Initialize template system for version URL rendering
+		if template.Cache == nil {
+			template.Cache = &cache.Template{}
+		}
+		template.Init(env, nil, nil)
+
+		if tc.HasUVCommand {
+			env.On("HasCommand", "uv").Return(true)
+			env.On("RunCommandWithEnv", "uv", []string(nil), []string{"run", "--no-sync", "--quiet", "--no-python-downloads", "python", "--version"}).Return(tc.UVVersionOutput, nil)
+		} else {
+			env.On("HasCommand", "uv").Return(false)
+		}
+
+		if tc.Tooling != nil {
+			props[Tooling] = tc.Tooling
+		}
+		props[DisplayMode] = DisplayModeAlways
+
+		python := &Python{}
+		python.Init(props, env)
+
+		assert.True(t, python.Enabled(), tc.Case)
+
+		// Verify commands are built from tooling
+		if len(tc.Tooling) > 0 {
+			assert.Equal(t, tc.Tooling[0], python.commands[0].executable, tc.Case)
+		}
+
+		assert.Equal(t, tc.Expected, python.Full, tc.Case)
+	}
+}
+
+// TestPythonVenvOnlyTemplateFetchesPyenv pins Venv as part of python's
+// derived version unit: the pyenv getVersion overrides .Venv with the
+// pyenv-resolved virtualenv name, so a template showing only .Venv must
+// still run the fetch to keep that naming.
+func TestPythonVenvOnlyTemplateFetchesPyenv(t *testing.T) {
+	params := &mockedLanguageParams{
+		cmd:           "python",
+		versionParam:  "--version",
+		versionOutput: "Python 3.8.8",
+		extension:     "*.py",
+	}
+	env, props := getMockedLanguageEnv(params)
+
+	env.On("GOOS").Return("")
+	env.On("CommandPath", testify_.Anything).Return("/home/user/.pyenv/shims/python")
+	env.On("HasFilesInDir", testify_.Anything, "pyvenv.cfg").Return(false)
+	// no env-var virtualenv anywhere: the name below is only reachable
+	// through the pyenv resolution inside the version fetch
+	env.On("Getenv", "VIRTUAL_ENV").Return("")
+	env.On("Getenv", "CONDA_ENV_PATH").Return("")
+	env.On("Getenv", "CONDA_DEFAULT_ENV").Return("")
+	env.On("Getenv", "PYENV_ROOT").Return("/home/user/.pyenv")
+	env.On("PathSeparator").Return("")
+	env.On("RunCommand", "pyenv", []string{"version-name"}).Return("3.8.8:extra", nil)
+	env.On("ResolveSymlink", testify_.Anything).Return("/home/user/.pyenv/versions/3.8.8/envs/VENV", nil)
+
+	props[DisplayMode] = DisplayModeAlways
+
+	// the fetch renders the version URL template, which needs the pool
+	env.On("Shell").Return("bash")
+	if template.Cache == nil {
+		template.Cache = &cache.Template{}
+	}
+	template.Init(env, nil, nil)
+
+	python := &Python{}
+	python.Init(props, env)
+	python.SetReferencedFields(template.RefSet{Fields: []string{"Venv"}, Analyzable: true})
+
+	assert.True(t, python.Enabled())
+	assert.Equal(t, "VENV", renderTemplate(env, "{{ .Venv }}", python))
 }

@@ -7,7 +7,7 @@ import (
 //go:embed scripts/omp.zsh
 var zshInit string
 
-func (f Feature) Zsh() Code {
+func (f Features) Zsh() Code {
 	switch f {
 	case CursorPositioning:
 		return unixCursorPositioning
@@ -21,7 +21,11 @@ func (f Feature) Zsh() Code {
 		return unixUpgrade
 	case Notice:
 		return unixNotice
-	case PromptMark, RPrompt, PoshGit, Azure, LineError, Jobs:
+	case Streaming:
+		return "if [[ ! -v POSH_DISABLE_STREAMING ]]; then _omp_enable_streaming=1; fi"
+	case VIMode:
+		return "_omp_enable_vimode"
+	case PromptMark, RPrompt, PoshGit, Azure, LineError, Jobs, Async, KeyHandlers:
 		fallthrough
 	default:
 		return ""

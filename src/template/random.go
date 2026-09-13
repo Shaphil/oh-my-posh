@@ -3,11 +3,11 @@ package template
 import (
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"reflect"
 )
 
-func random(list interface{}) (string, error) {
+func random(list any) (string, error) {
 	v := reflect.ValueOf(list)
 
 	if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
@@ -18,5 +18,5 @@ func random(list interface{}) (string, error) {
 		return "", errors.New("input slice or array is empty")
 	}
 
-	return fmt.Sprintf("%v", v.Index(rand.Intn(v.Len()))), nil
+	return fmt.Sprintf("%v", v.Index(rand.IntN(v.Len()))), nil
 }

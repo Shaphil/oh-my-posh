@@ -6,22 +6,22 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestCFTargetSegment(t *testing.T) {
 	cases := []struct {
+		CommandError   error
+		FileInfo       *runtime.FileInfo
 		Case           string
 		Template       string
 		ExpectedString string
 		DisplayMode    string
-		FileInfo       *runtime.FileInfo
 		TargetOutput   string
-		CommandError   error
 	}{
 		{
 			Case:         "not logged in to CF account",
@@ -76,7 +76,7 @@ func TestCFTargetSegment(t *testing.T) {
 		env.On("HasParentFilePath", "manifest.yml", false).Return(tc.FileInfo, err)
 
 		cfTarget := &CfTarget{}
-		props := properties.Map{
+		props := options.Map{
 			DisplayMode: tc.DisplayMode,
 		}
 

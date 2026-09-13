@@ -17,7 +17,7 @@
           "background": "#D51111",
           "foreground": "#ffffff",
           "powerline_symbol": "\ue0b0",
-          "properties": {
+          "options": {
             "home_icon": "\uf46d",
             "folder_separator_icon": " <transparent>\ue0b1</> ",
             "folder_icon": "\uf115",
@@ -37,11 +37,6 @@
           ],
           "foreground": "#000000",
           "powerline_symbol": "\ue0b0",
-          "properties": {
-            "fetch_stash_count": true,
-            "fetch_status": true,
-            "fetch_upstream_icon": true
-          },
           "style": "powerline",
           "template": " \uf113 {{ .HEAD }}{{if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }} \uf044 {{ .Working.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Staging.Changed }} \uf046 {{ .Staging.String }}{{ end }}{{ if gt .StashCount 0 }} \ueb4b {{ .StashCount }}{{ end }} ",
           "type": "git"
@@ -56,7 +51,7 @@
           "background": "#303030",
           "foreground": "#3C873A",
           "leading_diamond": "\ue0b6",
-          "properties": {
+          "options": {
             "fetch_package_manager": true,
             "npm_icon": " <#cc3a3a>\ue5fa</> ",
             "yarn_icon": " <#348cba>\ue6a7</>"
@@ -91,7 +86,7 @@
             "{{ if gt .Code 0 }}#D51111{{ end }}"
           ],
           "leading_diamond": "\ue0b6",
-          "properties": {
+          "options": {
             "time_format": "_2, 15:04:05"
           },
           "style": "diamond",
@@ -122,6 +117,6 @@
   "console_title_template": "{{ .Folder }}",
   "final_space": true,
   "osc99": true,
-  "version": 2
+  "version": 4
 }
 

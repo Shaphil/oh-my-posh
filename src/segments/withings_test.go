@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	"github.com/stretchr/testify/assert"
 	testify_ "github.com/stretchr/testify/mock"
@@ -33,14 +33,14 @@ func (s *mockedWithingsAPI) GetSleep() (*WithingsData, error) {
 
 func TestWithingsSegment(t *testing.T) {
 	cases := []struct {
-		Case            string
-		ExpectedString  string
-		ExpectedEnabled bool
-		Template        string
 		MeasuresError   error
 		ActivitiesError error
 		SleepError      error
 		WithingsData    *WithingsData
+		Case            string
+		ExpectedString  string
+		Template        string
+		ExpectedEnabled bool
 	}{
 		{
 			Case:            "Error",
@@ -69,6 +69,35 @@ func TestWithingsSegment(t *testing.T) {
 			SleepError:      errors.New("error"),
 			ExpectedEnabled: true,
 			ExpectedString:  "70.77kg",
+		},
+		{
+			Case: "Multiple Measuring Groups, only Measures data",
+			WithingsData: &WithingsData{
+				Body: &Body{
+					MeasureGroups: []*MeasureGroup{
+						{
+							Measures: []*Measure{
+								{
+									Value: 7123,
+									Unit:  -2,
+								},
+							},
+						},
+						{
+							Measures: []*Measure{
+								{
+									Value: 7754,
+									Unit:  -2,
+								},
+							},
+						},
+					},
+				},
+			},
+			ActivitiesError: errors.New("error"),
+			SleepError:      errors.New("error"),
+			ExpectedEnabled: true,
+			ExpectedString:  "77.54kg",
 		},
 		{
 			Case: "Measures, no data",
@@ -151,9 +180,9 @@ func TestWithingsSegment(t *testing.T) {
 		api.On("GetSleep").Return(tc.WithingsData, tc.SleepError)
 
 		withings := &Withings{
-			api:   api,
-			props: &properties.Map{},
+			api: api,
 		}
+		withings.Init(options.Map{}, &mock.Environment{})
 
 		enabled := withings.Enabled()
 		assert.Equal(t, tc.ExpectedEnabled, enabled, tc.Case)

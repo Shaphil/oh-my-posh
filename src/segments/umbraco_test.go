@@ -9,17 +9,17 @@ import (
 
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	"github.com/stretchr/testify/assert"
-	testify_ "github.com/stretchr/testify/mock"
 )
 
 func TestUmbracoSegment(t *testing.T) {
 	cases := []struct {
 		Case                    string
-		ExpectedEnabled         bool
 		ExpectedString          string
 		Template                string
+		ExpectedEnabled         bool
 		HasUmbracoFolder        bool
 		HasCsproj               bool
 		HasWebConfig            bool
@@ -136,7 +136,6 @@ func TestUmbracoSegment(t *testing.T) {
 		env.On("FileContent", filepath.Join(umbracoProjectDirectory, "MyProject.csproj")).Return(sampleCSProj)
 		env.On("FileContent", filepath.Join(umbracoProjectDirectory, "ANonUmbracoProject.csproj")).Return(sampleNonUmbracoCSProj)
 		env.On("FileContent", filepath.Join(umbracoProjectDirectory, "web.config")).Return(sampleWebConfig)
-		env.On("Debug", testify_.Anything)
 
 		if tc.HasUmbracoFolder {
 			fileInfo := &runtime.FileInfo{
@@ -176,9 +175,8 @@ func TestUmbracoSegment(t *testing.T) {
 		env.On("LsDir", umbracoProjectDirectory).Return(dirEntries)
 
 		// Setup the Umbraco segment with the mocked environment & properties
-		umb := &Umbraco{
-			env: env,
-		}
+		umb := &Umbraco{}
+		umb.Init(options.Map{}, env)
 
 		// Assert the test results
 		// Check if the segment should be enabled and

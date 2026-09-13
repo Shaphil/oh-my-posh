@@ -1,12 +1,17 @@
 package terminal
 
 import (
+	"encoding/gob"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/jandedobbeleer/oh-my-posh/src/shell"
+	"github.com/jandedobbeleer/oh-my-posh/src/text"
 )
+
+func init() {
+	gob.Register(&ITermFeatures{})
+}
 
 type iTermFeature string
 
@@ -19,19 +24,14 @@ const (
 type ITermFeatures []iTermFeature
 
 func (f ITermFeatures) Contains(feature iTermFeature) bool {
-	for _, item := range f {
-		if item == feature {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(f, feature)
 }
 
 func RenderItermFeatures(features ITermFeatures, sh, pwd, user, host string) string {
 	supportedShells := []string{shell.BASH, shell.ZSH}
 
-	var result strings.Builder
+	result := text.NewBuilder()
+
 	for _, feature := range features {
 		switch feature {
 		case PromptMark:
@@ -41,9 +41,9 @@ func RenderItermFeatures(features ITermFeatures, sh, pwd, user, host string) str
 
 			result.WriteString(formats.ITermPromptMark)
 		case CurrentDir:
-			result.WriteString(fmt.Sprintf(formats.ITermCurrentDir, pwd))
+			result.WriteString(fmt.Sprintf(formats.ITermCurrentDir, stripControlRunes(pwd)))
 		case RemoteHost:
-			result.WriteString(fmt.Sprintf(formats.ITermRemoteHost, user, host))
+			result.WriteString(fmt.Sprintf(formats.ITermRemoteHost, stripControlRunes(user), stripControlRunes(host)))
 		}
 	}
 

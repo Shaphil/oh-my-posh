@@ -4,27 +4,27 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestWinReg(t *testing.T) {
 	cases := []struct {
+		Err             error
+		getWRKVOutput   *runtime.WindowsRegistryValue
 		CaseDescription string
 		Path            string
 		Fallback        string
-		ExpectedSuccess bool
 		ExpectedValue   string
-		getWRKVOutput   *runtime.WindowsRegistryValue
-		Err             error
+		ExpectedSuccess bool
 	}{
 		{
 			CaseDescription: "Error",
 			Path:            "HKLLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\ProductName",
-			Err:             errors.New("No match"),
+			Err:             errors.New("no match"),
 			ExpectedSuccess: false,
 		},
 		{
@@ -38,7 +38,7 @@ func TestWinReg(t *testing.T) {
 			CaseDescription: "Fallback value",
 			Path:            "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\InstallTime",
 			Fallback:        "cortana",
-			Err:             errors.New("No match"),
+			Err:             errors.New("no match"),
 			ExpectedSuccess: true,
 			ExpectedValue:   "cortana",
 		},
@@ -63,13 +63,14 @@ func TestWinReg(t *testing.T) {
 		env := new(mock.Environment)
 		env.On("GOOS").Return(runtime.WINDOWS)
 		env.On("WindowsRegistryKeyValue", tc.Path).Return(tc.getWRKVOutput, tc.Err)
-		r := &WindowsRegistry{
-			env: env,
-			props: properties.Map{
-				RegistryPath: tc.Path,
-				Fallback:     tc.Fallback,
-			},
+
+		props := options.Map{
+			RegistryPath: tc.Path,
+			Fallback:     tc.Fallback,
 		}
+
+		r := &WindowsRegistry{}
+		r.Init(props, env)
 
 		assert.Equal(t, tc.ExpectedSuccess, r.Enabled(), tc.CaseDescription)
 		assert.Equal(t, tc.ExpectedValue, renderTemplate(env, r.Template(), r), tc.CaseDescription)

@@ -8,7 +8,7 @@ import (
 //go:embed scripts/omp.lua
 var cmdInit string
 
-func (f Feature) Cmd() Code {
+func (f Features) Cmd() Code {
 	switch f {
 	case Transient:
 		return "transient_enabled = true"
@@ -19,10 +19,22 @@ func (f Feature) Cmd() Code {
 	case Tooltips:
 		return "enable_tooltips()"
 	case Upgrade:
-		return `os.execute(string.format('"%s" upgrade', omp_executable))`
+		return `os.execute(string.format('"%s" upgrade --auto', omp_executable))`
 	case Notice:
-		return `os.execute(string.format('"%s" notice', omp_executable))`
-	case PromptMark, PoshGit, Azure, LineError, Jobs, CursorPositioning:
+		return `if clink.onbeginedit then
+    local need_notice = true
+    clink.onbeginedit(function()
+        if need_notice then
+            need_notice = false
+            os.execute(string.format('"%s" notice', omp_executable))
+        end
+    end)
+else
+    os.execute(string.format('"%s" notice', omp_executable))
+end`
+	case Streaming:
+		return "if os.getenv(\"POSH_DISABLE_STREAMING\") == nil then\n    serve_enabled = true\nend"
+	case PromptMark, PoshGit, Azure, LineError, Jobs, CursorPositioning, Async, KeyHandlers, VIMode:
 		fallthrough
 	default:
 		return ""
@@ -30,7 +42,7 @@ func (f Feature) Cmd() Code {
 }
 
 func escapeLuaStr(str string) string {
-	if len(str) == 0 {
+	if str == "" {
 		return str
 	}
 	// We only replace a minimal set of special characters with corresponding escape sequences, without adding surrounding quotes.

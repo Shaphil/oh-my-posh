@@ -4,22 +4,22 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestSysInfo(t *testing.T) {
 	cases := []struct {
+		Error          error
 		Case           string
 		ExpectedString string
-		ExpectDisabled bool
+		Template       string
 		SysInfo        runtime.SystemInfo
 		Precision      int
-		Template       string
-		Error          error
+		ExpectDisabled bool
 	}{
 		{
 			Case:           "Error",
@@ -74,13 +74,24 @@ func TestSysInfo(t *testing.T) {
 				},
 			},
 		},
+		{
+			Case:           "accurate memory percentage",
+			ExpectedString: "36.96",
+			SysInfo: runtime.SystemInfo{
+				Memory: runtime.Memory{
+					PhysicalPercentUsed: 36.96,
+				},
+			},
+			Precision: 2,
+			Template:  "{{ round .PhysicalPercentUsed .Precision }}",
+		},
 	}
 
 	for _, tc := range cases {
 		env := new(mock.Environment)
 		env.On("SystemInfo").Return(&tc.SysInfo, tc.Error)
 		sysInfo := &SystemInfo{}
-		props := properties.Map{
+		props := options.Map{
 			Precision: tc.Precision,
 		}
 		sysInfo.Init(props, env)

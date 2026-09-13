@@ -48,7 +48,7 @@ while getopts ":hd:t:v:" option; do
    esac
 done
 
-SUPPORTED_TARGETS="linux-386 linux-amd64 linux-arm linux-arm64 darwin-amd64 darwin-arm64 freebsd-386 freebsd-amd64 freebsd-arm freebsd-arm64"
+SUPPORTED_TARGETS="linux-amd64 linux-arm linux-arm64 darwin-amd64 darwin-arm64 freebsd-amd64 freebsd-arm freebsd-arm64"
 
 validate_dependency() {
     if ! command -v $1 >/dev/null; then
@@ -155,7 +155,7 @@ install_themes() {
 
     zip_file="${cache_dir}/themes.zip"
 
-    url="https://github.com/JanDeDobbeleer/oh-my-posh/releases/latest/download/themes.zip"
+    url="https://cdn.ohmyposh.dev/releases/latest/themes.zip"
 
     http_response=$(curl -s -f -L $url -o $zip_file -w "%{http_code}")
 
@@ -191,9 +191,9 @@ install() {
     info "\nℹ️  Installing oh-my-posh for ${target} in ${install_dir}"
 
     executable=${install_dir}/oh-my-posh
-    url=https://github.com/JanDeDobbeleer/oh-my-posh/releases/latest/download/posh-${target}
+    url=https://cdn.ohmyposh.dev/releases/latest/posh-${target}
     if [ "$version" ]; then
-      url=https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/${version}/posh-${target}
+      url=https://cdn.ohmyposh.dev/releases/${version}/posh-${target}
     fi
 
     info "⬇️  Downloading oh-my-posh from ${url}"
@@ -224,7 +224,6 @@ detect_arch() {
     armv*) arch="arm" ;;
     arm64) arch="arm64" ;;
     aarch64) arch="arm64" ;;
-    i686) arch="386" ;;
   esac
 
   if [ "${arch}" = "arm64" ] && [ "$(getconf LONG_BIT)" -eq 32 ]; then

@@ -4,12 +4,11 @@ import (
 	"encoding/json"
 	"path/filepath"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 )
 
 const (
-	FetchDependencies properties.Property = "fetch_dependencies"
+	FetchDependencies options.Option = "fetch_dependencies"
 )
 
 type Package struct {
@@ -18,52 +17,63 @@ type Package struct {
 }
 
 type Quasar struct {
-	language
-
-	HasVite bool
 	Vite    *Package
 	AppVite *Package
+	Language
+	HasVite bool
 }
 
 func (q *Quasar) Enabled() bool {
-	if !q.language.Enabled() {
+	q.loadSpec()
+
+	if !q.Language.Enabled() {
 		return false
 	}
 
-	if q.language.props.GetBool(FetchDependencies, false) {
+	if q.options.Bool(FetchDependencies, false) {
 		q.fetchDependencies()
 	}
 
 	return true
 }
 
-func (q *Quasar) Template() string {
-	return " \uea6a {{.Full}}{{ if .HasVite }} \ueb29 {{ .Vite.Version }}{{ end }} "
+// Activation implements the activation gate; see Language.activation.
+func (q *Quasar) Activation() Activation {
+	q.loadSpec()
+
+	return q.activation()
 }
 
-func (q *Quasar) Init(props properties.Properties, env runtime.Environment) {
-	q.language = language{
-		env:          env,
-		props:        props,
-		projectFiles: []string{"quasar.config", "quasar.config.js"},
-		commands: []*cmd{
-			{
-				executable: "quasar",
-				args:       []string{"--version"},
-				regex:      `(?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+)))`,
-			},
+func (q *Quasar) loadSpec() {
+	const quasarToolName = "quasar"
+
+	q.projectFiles = []string{"quasar.config", "quasar.config.js"}
+	q.tooling = map[string]*cmd{
+		// quasar --version reports the Quasar CLI's own version, not the
+		// project's quasar/vite dependency versions - those are read
+		// separately from package-lock.json by fetchDependencies below.
+		quasarToolName: {
+			executable:       quasarToolName,
+			args:             []string{versionFlagArg},
+			regex:            versionRegex,
+			versionCacheable: true,
 		},
-		versionURLTemplate: "https://github.com/quasarframework/quasar/releases/tag/quasar-v{{ .Full }}",
 	}
+	q.defaultTooling = []string{quasarToolName}
+	q.versionURLTemplate = "https://github.com/quasarframework/quasar/releases/tag/quasar-v{{ .Full }}"
+}
+
+func (q *Quasar) Template() string {
+	return " \ue87f {{.Full}}{{ if .HasVite }} \ueb29 {{ .Vite.Version }}{{ end }} "
 }
 
 func (q *Quasar) fetchDependencies() {
-	if !q.language.env.HasFilesInDir(q.projectRoot.ParentFolder, "package-lock.json") {
+	if !q.env.HasFilesInDir(q.projectRoot.ParentFolder, "package-lock.json") {
 		return
 	}
 
 	packageFilePath := filepath.Join(q.projectRoot.ParentFolder, "package-lock.json")
-	content := q.language.env.FileContent(packageFilePath)
+	content := q.env.FileContent(packageFilePath)
 
 	var objmap map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(content), &objmap); err != nil {

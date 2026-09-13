@@ -3,75 +3,69 @@
 package segments
 
 import (
-	"encoding/json"
+	"strconv"
+	"strings"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 )
 
-const spotifyCacheKey = "spotify_music_player"
-
 func (s *Spotify) Enabled() bool {
-	cacheTimeout := s.props.GetInt(properties.CacheTimeout, 0)
-	if cacheTimeout > 0 && s.getFromCache() {
-		return true
-	}
+	// Batching commands to reduce latency. Each individual call to `osascript` creates additional delays.
+	// Using '|' as a delimiter in the batched command since it's unlikely
+	// to appear in track or artist names, making it safe for splitting the output
+	batchedCommand := `
+	if application "Spotify" is running then
+		tell application "Spotify"
+			set playerState to player state as string
+			set artistName to ""
+			set trackName to ""
+			set albumName to ""
+			set trackNumber to 0
+			if playerState is not "stopped" then
+				try
+					set artistName to artist of current track as string
+				end try
+				try
+					set trackName to name of current track as string
+				end try
+				try
+					set albumName to album of current track as string
+				end try
+				try
+					set trackNumber to track number of current track as integer
+				end try
+			end if
+			return "true|" & playerState & "|" & artistName & "|" & trackName & "|" & albumName & "|" & trackNumber
+		end tell
+	else
+		return "false|||||0"
+	end if
+	`
 
-	// Check if running
-	running := s.runAppleScriptCommand("application \"Spotify\" is running")
-	if running == "false" || running == "" {
+	batchedOutput := s.runAppleScriptCommand(batchedCommand)
+
+	outputStrings := strings.SplitN(batchedOutput, "|", 6)
+	if len(outputStrings) != 6 || outputStrings[0] == "false" || outputStrings[0] == "" {
 		s.Status = stopped
 		return false
 	}
 
-	s.Status = s.runAppleScriptCommand("tell application \"Spotify\" to player state as string")
-
-	if len(s.Status) == 0 {
+	if outputStrings[1] == "" {
 		s.Status = stopped
 		return false
 	}
 
-	if s.Status == stopped {
-		return false
-	}
-
-	s.Artist = s.runAppleScriptCommand("tell application \"Spotify\" to artist of current track as string")
-	s.Track = s.runAppleScriptCommand("tell application \"Spotify\" to name of current track as string")
-
-	s.resolveIcon()
-
-	if cacheTimeout > 0 {
-		s.setCache(cacheTimeout)
-	}
-
-	return true
+	trackNumber, _ := strconv.Atoi(outputStrings[5])
+	return s.applyMediaInfo(&runtime.MediaInfo{
+		Status:      outputStrings[1],
+		Artist:      outputStrings[2],
+		Title:       outputStrings[3],
+		Album:       outputStrings[4],
+		TrackNumber: trackNumber,
+	})
 }
 
 func (s *Spotify) runAppleScriptCommand(command string) string {
 	val, _ := s.env.RunCommand("osascript", "-e", command)
 	return val
-}
-
-func (s *Spotify) getFromCache() bool {
-	str, found := s.env.Cache().Get(spotifyCacheKey)
-	if !found {
-		return false
-	}
-
-	var cachedMusicPlayer MusicPlayer
-	err := json.Unmarshal([]byte(str), &cachedMusicPlayer)
-	if err != nil {
-		return false
-	}
-
-	s.MusicPlayer = cachedMusicPlayer
-	return true
-}
-
-func (s *Spotify) setCache(cacheTimeout int) {
-	cache, err := json.Marshal(s.MusicPlayer)
-	if err != nil {
-		return
-	}
-
-	s.env.Cache().Set(spotifyCacheKey, string(cache), cacheTimeout)
 }

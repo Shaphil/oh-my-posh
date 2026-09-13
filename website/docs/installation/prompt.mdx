@@ -1,7 +1,7 @@
 ---
 id: prompt
 title: Change your prompt
-sidebar_label: ✨ Prompt
+sidebar_label: Prompt
 ---
 
 import Tabs from "@theme/Tabs";
@@ -16,20 +16,50 @@ oh-my-posh get shell
 ```
 
 <Tabs
+  queryString="shell"
   defaultValue="powershell"
   groupId="shell"
   values={[
+    { label: 'antigravity', value: 'antigravity', },
     { label: 'bash', value: 'bash', },
+    { label: 'claude', value: 'claude', },
     { label: 'cmd', value: 'cmd', },
+    { label: 'copilot', value: 'copilot', },
     { label: 'elvish', value: 'elvish', },
     { label: 'fish', value: 'fish', },
     { label: 'nu', value: 'nu', },
     { label: 'powershell', value: 'powershell', },
-    { label: 'tcsh', value: 'tcsh', },
     { label: 'xonsh', value: 'xonsh', },
+    { label: 'yash', value: 'yash', },
     { label: 'zsh', value: 'zsh', },
   ]
 }>
+<TabItem value="antigravity">
+
+To enable Antigravity CLI integration with Oh My Posh, add the following to your Antigravity CLI settings:
+
+```json title="~/.gemini/antigravity-cli/settings.json"
+{
+  "statusLine": {
+    "type": "command",
+    "command": "oh-my-posh antigravity"
+  }
+}
+```
+
+:::tip
+You can use the `--config` flag to point to a tailored Oh My Posh config just for Antigravity CLI:
+
+```bash
+oh-my-posh antigravity --config /path/to/antigravity.omp.json
+```
+
+:::
+
+For more information about the Antigravity segment properties and customization options, see the
+[Antigravity segment documentation].
+
+</TabItem>
 <TabItem value="bash">
 
 Add the following snippet as the last line to `~/.bashrc` (could be `~/.profile` or `~/.bash_profile` depending on your environment):
@@ -51,20 +81,96 @@ Or, when using `~/.profile`.
 ```
 
 </TabItem>
+<TabItem value="claude">
+
+To enable Claude Code integration with Oh My Posh, configure Claude Code to use Oh My Posh as the statusline command.
+
+Add the following to your Claude Code settings:
+
+```json title="~/.claude/settings.json"
+{
+  "statusLine": {
+    "type": "command",
+    "command": "oh-my-posh claude",
+    "padding": 0
+  }
+}
+```
+
+:::tip
+You can use the `--config` flag to point to a tailored Oh My Posh config just for Claude Code:
+
+```bash
+oh-my-posh claude --config /path/to/claude.omp.json
+```
+
+:::
+
+For more information about the Claude segment properties and customization options, see the [Claude segment documentation](/docs/segments/agents/claude).
+
+</TabItem>
+<TabItem value="copilot">
+
+To enable GitHub Copilot CLI integration with Oh My Posh, add the following to your Copilot CLI settings:
+
+```json title="~/.copilot/settings.json"
+{
+  "statusLine": {
+    "type": "command",
+    "command": "oh-my-posh copilot"
+  },
+  "feature_flags": {
+    "enabled": ["STATUS_LINE"]
+  },
+  "experimental": true
+}
+```
+
+:::tip
+You can use the `--config` flag to point to a tailored Oh My Posh config just for Copilot CLI:
+
+```bash
+oh-my-posh copilot --config /path/to/copilot.omp.json
+```
+
+:::
+
+Restart Copilot CLI or run `/restart` in an open session to pick up the new settings.
+
+For more information about the Copilot CLI segment properties and customization options, see the
+[Copilot CLI segment documentation].
+
+</TabItem>
 <TabItem value="cmd">
 
 There's no out-of-the-box support for Windows CMD when it comes to custom prompts.
 There is however a way to do it using [Clink][clink], which at the same time supercharges
 your cmd experience. Follow the installation instructions and make sure you select autostart.
 
-Integrating Oh My Posh with Clink is easy: create a new file called oh-my-posh.lua in your Clink
-scripts directory (run `clink info` inside cmd to find that file's location).
+Since Clink v1.7.0, Clink has builtin support for Oh My Posh. This is the recommended way to
+integrate the two, as it lets Clink manage the prompt for you:
+
+```bash
+clink config prompt use oh-my-posh
+```
+
+To set the configuration file, use the following command:
+
+```bash
+clink set ohmyposh.theme <path>
+```
+
+:::info
+If you're on an older version of Clink without builtin support, you can integrate Oh My Posh
+manually: create a new file called oh-my-posh.lua in your Clink scripts directory (run
+`clink info` inside cmd to find that file's location).
 
 ```lua title="oh-my-posh.lua"
 load(io.popen('oh-my-posh init cmd'):read("*a"))()
 ```
 
 Once added, restart cmd for the changes to take effect.
+:::
 
 </TabItem>
 <TabItem value="elvish">
@@ -85,7 +191,7 @@ exec elvish
 <TabItem value="fish">
 
 :::caution
-It is recommended to use the latest version of Fish. Versions below 3.1.2 have issues displaying the prompt.
+It is recommended to use the latest version of Fish. Versions below 4.1.0 have issues and do not support [transient prompt].
 :::
 
 Add the following snippet as the last line to `~/.config/fish/config.fish`:
@@ -104,32 +210,13 @@ exec fish
 <TabItem value="nu">
 
 :::caution
-Oh My Posh requires Nushell v0.93.0 or higher.
+Oh My Posh requires Nushell `v0.104.0` or higher.
 :::
 
-Add the following snippet as the last line to the Nushell env file (`$nu.env-path`):
+Add the following snippet as the last line to the Nushell config file (`$nu.config-path`):
 
 ```bash
 oh-my-posh init nu
-```
-
-This saves the initialization script to `~/.oh-my-posh.nu`.
-Now, edit the Nushell config file (`$nu.config-path`) and add the following line at the bottom:
-
-```bash
-source ~/.oh-my-posh.nu
-```
-
-If you want to save the initialization script elsewhere, you can change the first line to something like this:
-
-```bash
-oh-my-posh init nu --print | save /mylocation/myscript.nu --force
-```
-
-And change the `source` line to:
-
-```bash
-source /mylocation/myscript.nu
 ```
 
 Once added, restart Nushell for the changes to take effect.
@@ -160,36 +247,21 @@ Add the following snippet as the last line to your PowerShell profile script:
 oh-my-posh init pwsh | Invoke-Expression
 ```
 
-:::tip Antivirus software
-If adding an exception to your Antivirus software still blocks Oh My Posh for Windows, you can try using the below
-alternate line in your PowerShell profile. This is a drop-in replacement to the above call with Invoke-Expression.
-Tested with PowerShell 7.2.4 with Bitdefender Antivirus installed and requires NO exceptions for oh-my-posh.exe.
-Bitdefender blocks the calls to Invoke-Expression as malicious code and this alternate line skips the double calls:
+:::tip Execution policy
+In case the execution policy disables executing unsigned scripts on your system, you can fallback to evaluating
+the script instead. Use the `--eval` flag to do so:
 
 ```powershell
-& ([ScriptBlock]::Create((oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\jandedobbeleer.omp.json" --print) -join "`n"))
+oh-my-posh init pwsh --eval | Invoke-Expression
 ```
+
+Be aware this will make initializing the shell slower.
 :::
 
 Once added, reload your profile for the changes to take effect.
 
 ```powershell
 . $PROFILE
-```
-
-</TabItem>
-<TabItem value="tcsh">
-
-Add the following snippet as the last line to `~/.tcshrc`:
-
-```bash
-eval "`oh-my-posh init tcsh`"
-```
-
-Note that the surrounding quotes are required. Once added, reload your profile for the changes to take effect.
-
-```bash
-exec tcsh
 ```
 
 </TabItem>
@@ -205,6 +277,21 @@ Once added, reload your profile for the changes to take effect.
 
 ```bash
 exec xonsh
+```
+
+</TabItem>
+<TabItem value="yash">
+
+Add the following snippet as the last line to `~/.yashrc`:
+
+```bash
+eval "$(oh-my-posh init yash)"
+```
+
+Once added, reload your profile for the changes to take effect.
+
+```bash
+exec yash
 ```
 
 </TabItem>
@@ -237,7 +324,24 @@ exec zsh
 </TabItem>
 </Tabs>
 
+## Package managers
+
+By default, the generated init script for most Oh My Posh installations uses the executable's
+absolute path. A package manager that removes the previous version during an upgrade can leave an
+existing shell pointing to a path that no longer exists.
+
+Add `--strict` to resolve `oh-my-posh` through `PATH` instead:
+
+```bash
+eval "$(oh-my-posh init bash --strict)"
+```
+
+Use the equivalent init command for your shell. This keeps the prompt working when the version
+manager updates `PATH` to a new Oh My Posh installation.
+
+[Antigravity segment documentation]: /docs/segments/agents/antigravity
+[Copilot CLI segment documentation]: /docs/segments/agents/copilot-cli
 [clink]: https://chrisant996.github.io/clink/
-[iterm2]: https://www.iterm2.com/
-[homebrew-problem]: https://github.com/JanDeDobbeleer/oh-my-posh/discussions/2644
+[iterm2]: https://iterm2.com/
 [sign]: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_signing?view=powershell-7.3#methods-of-signing-scripts
+[transient prompt]: /docs/configuration/transient

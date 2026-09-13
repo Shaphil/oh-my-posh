@@ -15,8 +15,8 @@ func TestMvn(t *testing.T) {
 		Case           string
 		ExpectedString string
 		MvnVersion     string
-		HasMvnw        bool
 		MvnwVersion    string
+		HasMvnw        bool
 	}{
 		{
 			Case:           "Maven version",
@@ -51,7 +51,7 @@ func TestMvn(t *testing.T) {
 		}
 		env.On("HasParentFilePath", "mvnw", false).Return(fileInfo, err)
 		env.On("HasCommand", fileInfo.Path).Return(tc.HasMvnw)
-		env.On("RunCommand", fileInfo.Path, []string{"--version"}).Return(tc.MvnwVersion, nil)
+		env.On("RunCommandWithEnv", fileInfo.Path, []string(nil), []string{"--version"}).Return(tc.MvnwVersion, nil)
 
 		m := &Mvn{}
 		m.Init(props, env)

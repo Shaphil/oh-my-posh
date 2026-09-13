@@ -67,17 +67,13 @@ func TestCdsSegment(t *testing.T) {
 		}
 		env, props := getMockedLanguageEnv(params)
 
-		if len(tc.DisplayMode) == 0 {
+		if tc.DisplayMode == "" {
 			tc.DisplayMode = DisplayModeContext
 		}
 		props[DisplayMode] = tc.DisplayMode
 
-		if len(tc.PackageJSON) != 0 {
-			env.On("HasFiles", "package.json").Return(true)
-			env.On("FileContent", "package.json").Return(tc.PackageJSON)
-		} else {
-			env.On("HasFiles", "package.json").Return(false)
-		}
+		env.On("HasFiles", "package.json").Return(len(tc.PackageJSON) != 0)
+		env.On("FileContent", "package.json").Return(tc.PackageJSON)
 
 		cds := &Cds{}
 		cds.Init(props, env)

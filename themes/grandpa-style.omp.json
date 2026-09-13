@@ -21,7 +21,7 @@
         {
           "background": "#5a3d29",
           "foreground": "#43CCEA",
-          "properties": {
+          "options": {
             "folder_icon": "...",
             "folder_separator_icon": "<transparent> \ue0bd </>",
             "home_icon": "\ueb06",
@@ -41,10 +41,6 @@
           ],
           "foreground": "#000000",
           "leading_diamond": "<parentBackground,background>\ue0b0</>",
-          "properties": {
-            "fetch_stash_count": true,
-            "fetch_status": true
-          },
           "style": "diamond",
           "template": " {{ .HEAD }}{{ if .Staging.Changed }}<#FF6F00> \uf046 {{ .Staging.String }}</>{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Working.Changed }} \uf044 {{ .Working.String }}{{ end }}{{ if gt .StashCount 0 }} \ueb4b {{ .StashCount }}{{ end }} ",
           "type": "git"
@@ -53,7 +49,7 @@
           "background": "#2ba1bb",
           "foreground": "#5a3d29",
           "leading_diamond": "<parentBackground,background>\ue0b0</>",
-          "properties": {
+          "options": {
             "style": "dallas",
             "threshold": 0
           },
@@ -65,7 +61,7 @@
           "background": "#910000",
           "foreground": "#ffffff",
           "powerline_symbol": "\ue0b0",
-          "properties": {
+          "options": {
             "always_enabled": true
           },
           "style": "plain",
@@ -89,7 +85,7 @@
         {
           "background": "#5a3d29",
           "foreground": "#43CCEA",
-          "properties": {
+          "options": {
             "time_format": "3:04:05 PM"
           },
           "style": "plain",
@@ -108,7 +104,7 @@
           "foreground_templates": [
             "{{ if gt .Code 0 }}#ff0000{{ end }}"
           ],
-          "properties": {
+          "options": {
             "always_enabled": true
           },
           "style": "plain",
@@ -120,5 +116,5 @@
     }
   ],
   "console_title_template": "{{if .Root}} \u26a1 {{end}}{{.Folder | replace \"~\" \"🏚\" }} @ {{.HostName}}",
-  "version": 2
+  "version": 4
 }

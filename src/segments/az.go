@@ -6,43 +6,42 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 )
 
 type Az struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
-	AzureSubscription
 	Origin string
+	AzureSubscription
 }
 
 const (
-	Source properties.Property = "source"
+	Source options.Option = "source"
 
-	Pwsh       = "pwsh"
-	Cli        = "cli"
-	FirstMatch = "first_match"
+	Pwsh = "pwsh"
+	Cli  = "cli"
+	// this deprecated value is used to support the old behavior of first_match
+	FirstMatch = "cli|pwsh"
 	azureEnv   = "POSH_AZURE_SUBSCRIPTION"
 )
 
 type AzureConfig struct {
-	Subscriptions  []*AzureSubscription `json:"subscriptions"`
 	InstallationID string               `json:"installationId"`
+	Subscriptions  []*AzureSubscription `json:"subscriptions"`
 }
 
 type AzureSubscription struct {
+	User              *AzureUser `json:"user"`
 	ID                string     `json:"id"`
 	Name              string     `json:"name"`
 	State             string     `json:"state"`
-	User              *AzureUser `json:"user"`
-	IsDefault         bool       `json:"isDefault"`
 	TenantID          string     `json:"tenantId"`
 	TenantDisplayName string     `json:"tenantDisplayName"`
 	EnvironmentName   string     `json:"environmentName"`
 	HomeTenantID      string     `json:"homeTenantId"`
 	ManagedByTenants  []any      `json:"managedByTenants"`
+	IsDefault         bool       `json:"isDefault"`
 }
 
 type AzureUser struct {
@@ -76,21 +75,29 @@ func (a *Az) Template() string {
 	return NameTemplate
 }
 
-func (a *Az) Init(props properties.Properties, env runtime.Environment) {
-	a.props = props
-	a.env = env
-}
-
 func (a *Az) Enabled() bool {
-	source := a.props.GetString(Source, FirstMatch)
-	switch source {
-	case FirstMatch:
-		return a.getCLISubscription() || a.getModuleSubscription()
-	case Pwsh:
-		return a.getModuleSubscription()
-	case Cli:
-		return a.getCLISubscription()
+	source := a.options.String(Source, FirstMatch)
+
+	// migrate first_match
+	if source == "first_match" {
+		source = FirstMatch
 	}
+
+	sources := strings.SplitSeq(source, "|")
+
+	for source := range sources {
+		switch source {
+		case Pwsh:
+			if OK := a.getModuleSubscription(); OK {
+				return OK
+			}
+		case Cli:
+			if OK := a.getCLISubscription(); OK {
+				return OK
+			}
+		}
+	}
+
 	return false
 }
 
@@ -106,7 +113,7 @@ func (a *Az) getCLISubscription() bool {
 		return false
 	}
 	content := a.FileContentWithoutBom(cfg)
-	if len(content) == 0 {
+	if content == "" {
 		return false
 	}
 	var config AzureConfig
@@ -125,7 +132,7 @@ func (a *Az) getCLISubscription() bool {
 
 func (a *Az) getModuleSubscription() bool {
 	envSubscription := a.env.Getenv(azureEnv)
-	if len(envSubscription) == 0 {
+	if envSubscription == "" {
 		return false
 	}
 

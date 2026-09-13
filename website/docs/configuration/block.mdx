@@ -10,8 +10,6 @@ import Config from "@site/src/components/Config.js";
 
 <Config
   data={{
-    $schema:
-      "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/schema.json",
     blocks: [
       {
         type: "prompt",
@@ -22,7 +20,7 @@ import Config from "@site/src/components/Config.js";
   }}
 />
 
-## Properties
+## Settings
 
 | Name               | Type      |
 | ------------------ | --------- |
@@ -34,6 +32,9 @@ import Config from "@site/src/components/Config.js";
 | `leading_diamond`  | `string`  |
 | `trailing_diamond` | `string`  |
 | `segments`         | `array`   |
+| `force`            | `boolean` |
+| `restart_cycle`    | `boolean` |
+| `index`            | `int`     |
 
 ### Type
 
@@ -41,7 +42,7 @@ Tells the engine what to do with the block. There are two options:
 
 - `prompt` renders one or more segments
 - `rprompt` renders one or more segments aligned to the right of the cursor. Only one `rprompt` block is permitted.
-  Supported on zsh, PowerShell, cmd, nu and fish.
+  Supported on bash (with [ble.sh]), zsh, PowerShell, cmd, nu and fish.
 
 ### Newline
 
@@ -64,10 +65,39 @@ When you want to join a right and left aligned block with a repeated set of char
 to be repeated to this property. Add this property to the _right_ aligned block. This supports the use of
 [color overrides][color-overrides].
 
-```json
-"alignment": "right",
-"filler": "."
-```
+<Config
+  data={{
+    blocks: [
+      {
+        alignment: "right",
+        filler: ".",
+      },
+    ],
+  }}
+/>
+
+Filler allows you to specify a template to tweak the text used as filler. This template behaves the same as
+Segment templates, however, fewer properties are available.
+
+| Name        | Type   | Description                                                           |
+| ----------- | ------ | --------------------------------------------------------------------- |
+| `.Overflow` | `text` | if no overflow was needed, this is empty. Otherwise `hide` or `break` |
+| `.Padding`  | `int`  | the computed length of the padding between left and right blocks      |
+
+This can be very useful if you wish to use a filler text when there is no overflow and use
+empty space when the right block is hidden or drawn on a newline due to overflow.
+
+<Config
+  data={{
+    blocks: [
+      {
+        alignment: "right",
+        overflow: "hide",
+        filler: "{{ if .Overflow }} {{ else }}-{{ end }}",
+      },
+    ],
+  }}
+/>
 
 ### Overflow
 
@@ -91,5 +121,45 @@ with the same trailing diamond, regardless of which segment is enabled or not.
 
 Array of one or more [segments][segment].
 
+### Force
+
+When set to `true`, the block will always be rendered, even if all segments are empty. Defaults to `false`.
+
+### Restart Cycle
+
+When a [color cycle][cycle] is defined, its colors are shared across every block in the prompt and keep
+rotating from one block to the next. Set `restart_cycle` to `true` to make a block start the cycle over from
+its first color instead of continuing where the previous block left off. Defaults to `false`.
+
+This is useful for a two-line prompt where you always want the second line to begin with the cycle's first
+color, regardless of how many segments the first line rendered.
+
+<Config
+  data={{
+    blocks: [
+      {
+        type: "prompt",
+        alignment: "left",
+        segments: [],
+      },
+      {
+        type: "prompt",
+        alignment: "left",
+        newline: true,
+        restart_cycle: true,
+        segments: [],
+      },
+    ],
+  }}
+/>
+
+### Index
+
+The index of the block in the configuration. This is used to [override] a specific block in a base configuration.
+This is a 1-based index, so the first block has an index of `1`.
+
+[ble.sh]: https://github.com/akinomyoga/ble.sh
 [color-overrides]: /docs/configuration/colors#color-overrides
+[cycle]: /docs/configuration/colors#cycle
 [segment]: segment.mdx
+[override]: /docs/configuration/general#extends

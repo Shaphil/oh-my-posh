@@ -1,34 +1,35 @@
 package cache
 
 import (
-	"sync"
-
 	"github.com/jandedobbeleer/oh-my-posh/src/maps"
 )
 
 type Template struct {
-	Root          bool
+	Segments *maps.Concurrent[any]
+	SimpleTemplate
+}
+
+type SimpleTemplate struct {
+	SegmentsCache maps.Simple[any]
+	Var           maps.Simple[any]
 	PWD           string
-	AbsolutePWD   string
-	PSWD          string
 	Folder        string
-	Shell         string
-	ShellVersion  string
+	PSWD          string
 	UserName      string
 	HostName      string
-	Code          int
-	Env           map[string]string
-	Var           maps.Simple
+	ShellVersion  string
+	Shell         string
+	AbsolutePWD   string
 	OS            string
-	WSL           bool
+	Version       string
 	PromptCount   int
 	SHLVL         int
 	Jobs          int
-	Segments      *maps.Concurrent
-	SegmentsCache maps.Simple
-
-	Initialized bool
-	sync.RWMutex
+	Code          int
+	WSL           bool
+	Root          bool
+	Interrupted   bool
+	Executed      bool
 }
 
 func (t *Template) AddSegmentData(key string, value any) {

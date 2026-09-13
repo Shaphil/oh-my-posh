@@ -14,9 +14,22 @@ func TestCmdFeatures(t *testing.T) {
 enable_tooltips()
 transient_enabled = true
 ftcs_marks_enabled = true
-os.execute(string.format('"%s" upgrade', omp_executable))
-os.execute(string.format('"%s" notice', omp_executable))
-rprompt_enabled = true`
+os.execute(string.format('"%s" upgrade --auto', omp_executable))
+if clink.onbeginedit then
+    local need_notice = true
+    clink.onbeginedit(function()
+        if need_notice then
+            need_notice = false
+            os.execute(string.format('"%s" notice', omp_executable))
+        end
+    end)
+else
+    os.execute(string.format('"%s" notice', omp_executable))
+end
+rprompt_enabled = true
+if os.getenv("POSH_DISABLE_STREAMING") == nil then
+    serve_enabled = true
+end`
 
 	assert.Equal(t, want, got)
 }

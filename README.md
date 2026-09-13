@@ -23,11 +23,25 @@ This repo was made with love using GitKraken.
 [![GitKraken shield][kraken]][kraken-ref]
 <!-- markdownlint-disable first-header-h1 -->
 
+## Sponsors
+
+<!-- markdownlint-disable no-inline-html line-length -->
+<a href="https://coderabbit.link/posh">
+    <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="https://www.coderabbit.ai/press-kit/coderabbit-reverse-white.svg">
+          <source media="(prefers-color-scheme: light)" srcset="https://www.coderabbit.ai/press-kit/coderabbit-primary-black.svg">
+          <img alt="CodeRabbit" height="44" src="https://www.coderabbit.ai/press-kit/coderabbit-primary-black.svg" />
+    </picture>
+</a>
+<!-- markdownlint-enable no-inline-html line-length -->
+
+[Want to become a sponsor?][sponsor-link]
+
 ## Join the community
 
-![Mastodon badge](https://img.shields.io/mastodon/follow/110275292073181892?domain=https%3A%2F%2Fhachyderm.io&label=Mastodon&style=social)
+[![Mastodon badge](https://img.shields.io/mastodon/follow/110275292073181892?domain=hachyderm.io&style=social&label=Mastodon)](https://hachyderm.io/@jandedobbeleer)
 
-![Discord badge](https://img.shields.io/discord/1023597603331526656)
+[![Discord badge](https://img.shields.io/discord/1023597603331526656?logo=discord&logoColor=white)](https://discord.com/invite/n7E3DkXssv)
 
 What started as the offspring of [oh-my-posh2](https://github.com/JanDeDobbeleer/oh-my-posh2) for PowerShell
 resulted in a cross platform, highly customizable and extensible prompt theme engine. After 4 years of working
@@ -45,7 +59,7 @@ on oh-my-posh, a modern and more efficient tool was needed to suit my personal n
 
 * Shell and platform agnostic
 * Easily configurable
-* The **most** configurable prompt utility
+* The __most__ configurable prompt utility
 * Fast
 * Secondary prompt
 * Right prompt
@@ -80,3 +94,5 @@ using Go (and the amazing [README](https://github.com/justjanne/powerline-go))
 [docs]: https://ohmyposh.dev
 [release-badge]: https://img.shields.io/github/v/release/jandedobbeleer/oh-my-posh?label=Release
 [release]: https://github.com/JanDeDobbeleer/oh-my-posh/releases/latest
+
+[sponsor-link]: https://buy.polar.sh/polar_cl_qnmZxboq1IDUJo03mk2Jue6ktqZrCXElnzH2s2xbV2R

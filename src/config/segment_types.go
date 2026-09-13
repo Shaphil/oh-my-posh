@@ -1,11 +1,8 @@
 package config
 
 import (
-	"errors"
-
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-	"github.com/jandedobbeleer/oh-my-posh/src/segments"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 )
 
 // SegmentType the type of segment, for more information, see the constants
@@ -14,8 +11,18 @@ type SegmentType string
 // SegmentWriter is the interface used to define what and if to write to the prompt
 type SegmentWriter interface {
 	Enabled() bool
+	// Activation declares the cheap preconditions under which the writer can
+	// possibly be enabled; the engine skips Enabled() entirely when none of
+	// them holds (see runtime.Activation for the contract). Called after
+	// Init(), so implementations may consult their options. segments.Base
+	// provides the default (Always) implementation.
+	Activation() runtime.Activation
 	Template() string
-	Init(props properties.Properties, env runtime.Environment)
+	SetText(text string)
+	SetIndex(index int)
+	Text() string
+	Init(props options.Provider, env runtime.Environment)
+	CacheKey() (string, bool)
 }
 
 const (
@@ -29,8 +36,14 @@ const (
 	Diamond SegmentStyle = "diamond"
 	// ANGULAR writes which angular cli version us currently active
 	ANGULAR SegmentType = "angular"
+	// ANTIGRAVITY writes Antigravity CLI session information
+	ANTIGRAVITY SegmentType = "antigravity"
 	// ARGOCD writes the current argocd context
 	ARGOCD SegmentType = "argocd"
+	// ASPIRE writes the Aspire apphost status
+	ASPIRE SegmentType = "aspire"
+	// AURELIA writes which aurelia version is currently referenced in package.json
+	AURELIA SegmentType = "aurelia"
 	// AWS writes the active aws context
 	AWS SegmentType = "aws"
 	// AZ writes the Azure subscription info we're currently in
@@ -57,12 +70,18 @@ const (
 	CF SegmentType = "cf"
 	// Cloud Foundry logged in target
 	CFTARGET SegmentType = "cftarget"
+	// CLAUDE writes Claude Code session information
+	CLAUDE SegmentType = "claude"
+	// CLOJURE writes the active clojure version
+	CLOJURE SegmentType = "clojure"
 	// CMAKE writes the active cmake version
 	CMAKE SegmentType = "cmake"
-	// CMD writes the output of a shell command
-	CMD SegmentType = "command"
 	// CONNECTION writes a connection's information
 	CONNECTION SegmentType = "connection"
+	// COPILOT writes GitHub Copilot usage statistics
+	COPILOT SegmentType = "copilot"
+	// COPILOTCLI writes GitHub Copilot CLI session information
+	COPILOTCLI SegmentType = "copilot_cli"
 	// CRYSTAL writes the active crystal version
 	CRYSTAL SegmentType = "crystal"
 	// DART writes the active dart version
@@ -73,26 +92,32 @@ const (
 	DOCKER SegmentType = "docker"
 	// DOTNET writes which dotnet version is currently active
 	DOTNET SegmentType = "dotnet"
+	// DVC writes the dvc status
+	DVC SegmentType = "dvc"
 	// ELIXIR writes the elixir version
 	ELIXIR SegmentType = "elixir"
 	// EXECUTIONTIME writes the execution time of the last run command
 	EXECUTIONTIME SegmentType = "executiontime"
 	// EXIT writes the last exit code
 	EXIT SegmentType = "exit"
+	// FIREBASE writes the active firebase project
+	FIREBASE SegmentType = "firebase"
 	// FLUTTER writes the flutter version
 	FLUTTER SegmentType = "flutter"
+	// FORTRAN writes the gfortran version
+	FORTRAN SegmentType = "fortran"
 	// FOSSIL writes the fossil status
 	FOSSIL SegmentType = "fossil"
 	// GCP writes the active GCP context
 	GCP SegmentType = "gcp"
-	// FIREBASE writes the active firebase project
-	FIREBASE SegmentType = "firebase"
 	// GIT represents the git status and information
 	GIT SegmentType = "git"
 	// GITVERSION represents the gitversion information
 	GITVERSION SegmentType = "gitversion"
 	// GOLANG writes which go version is currently active
 	GOLANG SegmentType = "go"
+	// GRADLE writes the active gradle version
+	GRADLE SegmentType = "gradle"
 	// HASKELL segment
 	HASKELL SegmentType = "haskell"
 	// HELM segment
@@ -101,18 +126,26 @@ const (
 	IPIFY SegmentType = "ipify"
 	// JAVA writes the active java version
 	JAVA SegmentType = "java"
+	// API writes the output of a custom JSON API
+	HTTP SegmentType = "http"
+	// JUJUTSU writes Jujutsu source control information
+	JUJUTSU SegmentType = "jujutsu"
 	// JULIA writes which julia version is currently active
 	JULIA SegmentType = "julia"
 	// KOTLIN writes the active kotlin version
 	KOTLIN SegmentType = "kotlin"
 	// KUBECTL writes the Kubernetes context we're currently in
 	KUBECTL SegmentType = "kubectl"
+	// LANGUAGE writes the version of a user-configured language/tool, detected via custom tools
+	LANGUAGE SegmentType = "language"
 	// LASTFM writes the lastfm status
 	LASTFM SegmentType = "lastfm"
 	// LUA writes the active lua version
 	LUA SegmentType = "lua"
-	// MERCURIAL writes the Mercurial source control information
+	// MERCURIAL writes Mercurial source control information
 	MERCURIAL SegmentType = "mercurial"
+	// MOJO writes the active version of Mojo and the name of the Magic virtual env
+	MOJO SegmentType = "mojo"
 	// MVN writes the active maven version
 	MVN SegmentType = "mvn"
 	// NBA writes NBA game data
@@ -121,16 +154,20 @@ const (
 	NBGV SegmentType = "nbgv"
 	// NIGHTSCOUT is an open source diabetes system
 	NIGHTSCOUT SegmentType = "nightscout"
+	// NIM writes the active nim version
+	NIM SegmentType = "nim"
+	// NIXSHELL writes the active nix shell details
+	NIXSHELL SegmentType = "nix-shell"
 	// NODE writes which node version is currently active
 	NODE SegmentType = "node"
 	// npm version
 	NPM SegmentType = "npm"
 	// NX writes which Nx version us currently active
 	NX SegmentType = "nx"
-	// NIXSHELL writes the active nix shell details
-	NIXSHELL SegmentType = "nix-shell"
 	// OCAML writes the active Ocaml version
 	OCAML SegmentType = "ocaml"
+	// ORTHODOXCAL displays Orthodox fasting and feast information
+	ORTHODOXCAL SegmentType = "orthodoxcal"
 	// OS write os specific icon
 	OS SegmentType = "os"
 	// OWM writes the weather coming from openweatherdata
@@ -155,6 +192,8 @@ const (
 	QUASAR SegmentType = "quasar"
 	// R version
 	R SegmentType = "r"
+	// RAMADAN displays Sehar and Iftar prayer times during Ramadan
+	RAMADAN SegmentType = "ramadan"
 	// REACT writes the current react version
 	REACT SegmentType = "react"
 	// ROOT writes root symbol
@@ -177,6 +216,8 @@ const (
 	STATUS SegmentType = "status"
 	// STRAVA is a sports activity tracker
 	STRAVA SegmentType = "strava"
+	// Svelte segment
+	SVELTE SegmentType = "svelte"
 	// Subversion segment
 	SVN SegmentType = "svn"
 	// SWIFT writes the active swift version
@@ -185,24 +226,38 @@ const (
 	SYSTEMINFO SegmentType = "sysinfo"
 	// TALOSCTL writes the talosctl context
 	TALOSCTL SegmentType = "talosctl"
+	// TASKWARRIOR writes Taskwarrior task counts and context
+	TASKWARRIOR SegmentType = "taskwarrior"
+	// Tauri Segment
+	TAURI SegmentType = "tauri"
 	// TERRAFORM writes the terraform workspace we're currently in
 	TERRAFORM SegmentType = "terraform"
 	// TEXT writes a text
 	TEXT SegmentType = "text"
 	// TIME writes the current timestamp
 	TIME SegmentType = "time"
+	// TODOIST segment
+	TODOIST SegmentType = "todoist"
 	// UI5 Tooling segment
 	UI5TOOLING SegmentType = "ui5tooling"
 	// UMBRACO writes the Umbraco version if Umbraco is present
 	UMBRACO SegmentType = "umbraco"
+	// UNO writes the Uno.Sdk version from global.json
+	UNO SegmentType = "uno"
 	// UNITY writes which Unity version is currently active
 	UNITY SegmentType = "unity"
 	// UPGRADE lets you know if you can upgrade Oh My Posh
 	UPGRADE SegmentType = "upgrade"
+	// V writes the active vlang version
+	V SegmentType = "v"
 	// VALA writes the active vala version
 	VALA SegmentType = "vala"
+	// VIMODE writes the active Vi mode (insert/normal/visual)
+	VIMODE SegmentType = "vimode"
 	// WAKATIME writes tracked time spend in dev editors
 	WAKATIME SegmentType = "wakatime"
+	// WINGET writes the number of available WinGet package updates
+	WINGET SegmentType = "winget"
 	// WINREG queries the Windows registry.
 	WINREG SegmentType = "winreg"
 	// WITHINGS queries the Withings API.
@@ -213,122 +268,41 @@ const (
 	YARN SegmentType = "yarn"
 	// YTM writes YouTube Music information and status
 	YTM SegmentType = "ytm"
+	// ZIG writes the active zig version
+	ZIG SegmentType = "zig"
+	// ZVM writes the active zig version used in the zvm environment
+	ZVM SegmentType = "zvm"
 )
 
-// Segments contains all available prompt segment writers.
 // Consumers of the library can also add their own segment writer.
-var Segments = map[SegmentType]func() SegmentWriter{
-	ANGULAR:         func() SegmentWriter { return &segments.Angular{} },
-	ARGOCD:          func() SegmentWriter { return &segments.Argocd{} },
-	AWS:             func() SegmentWriter { return &segments.Aws{} },
-	AZ:              func() SegmentWriter { return &segments.Az{} },
-	AZD:             func() SegmentWriter { return &segments.Azd{} },
-	AZFUNC:          func() SegmentWriter { return &segments.AzFunc{} },
-	BATTERY:         func() SegmentWriter { return &segments.Battery{} },
-	BAZEL:           func() SegmentWriter { return &segments.Bazel{} },
-	BREWFATHER:      func() SegmentWriter { return &segments.Brewfather{} },
-	BUF:             func() SegmentWriter { return &segments.Buf{} },
-	BUN:             func() SegmentWriter { return &segments.Bun{} },
-	CARBONINTENSITY: func() SegmentWriter { return &segments.CarbonIntensity{} },
-	CDS:             func() SegmentWriter { return &segments.Cds{} },
-	CF:              func() SegmentWriter { return &segments.Cf{} },
-	CFTARGET:        func() SegmentWriter { return &segments.CfTarget{} },
-	CMD:             func() SegmentWriter { return &segments.Cmd{} },
-	CONNECTION:      func() SegmentWriter { return &segments.Connection{} },
-	CRYSTAL:         func() SegmentWriter { return &segments.Crystal{} },
-	CMAKE:           func() SegmentWriter { return &segments.Cmake{} },
-	DART:            func() SegmentWriter { return &segments.Dart{} },
-	DENO:            func() SegmentWriter { return &segments.Deno{} },
-	DOCKER:          func() SegmentWriter { return &segments.Docker{} },
-	DOTNET:          func() SegmentWriter { return &segments.Dotnet{} },
-	EXECUTIONTIME:   func() SegmentWriter { return &segments.Executiontime{} },
-	ELIXIR:          func() SegmentWriter { return &segments.Elixir{} },
-	EXIT:            func() SegmentWriter { return &segments.Status{} },
-	FLUTTER:         func() SegmentWriter { return &segments.Flutter{} },
-	FOSSIL:          func() SegmentWriter { return &segments.Fossil{} },
-	GCP:             func() SegmentWriter { return &segments.Gcp{} },
-	FIREBASE:        func() SegmentWriter { return &segments.Firebase{} },
-	GIT:             func() SegmentWriter { return &segments.Git{} },
-	GITVERSION:      func() SegmentWriter { return &segments.GitVersion{} },
-	GOLANG:          func() SegmentWriter { return &segments.Golang{} },
-	HASKELL:         func() SegmentWriter { return &segments.Haskell{} },
-	HELM:            func() SegmentWriter { return &segments.Helm{} },
-	IPIFY:           func() SegmentWriter { return &segments.IPify{} },
-	JAVA:            func() SegmentWriter { return &segments.Java{} },
-	JULIA:           func() SegmentWriter { return &segments.Julia{} },
-	KOTLIN:          func() SegmentWriter { return &segments.Kotlin{} },
-	KUBECTL:         func() SegmentWriter { return &segments.Kubectl{} },
-	LASTFM:          func() SegmentWriter { return &segments.LastFM{} },
-	LUA:             func() SegmentWriter { return &segments.Lua{} },
-	MERCURIAL:       func() SegmentWriter { return &segments.Mercurial{} },
-	MVN:             func() SegmentWriter { return &segments.Mvn{} },
-	NBA:             func() SegmentWriter { return &segments.Nba{} },
-	NBGV:            func() SegmentWriter { return &segments.Nbgv{} },
-	NIGHTSCOUT:      func() SegmentWriter { return &segments.Nightscout{} },
-	NODE:            func() SegmentWriter { return &segments.Node{} },
-	NPM:             func() SegmentWriter { return &segments.Npm{} },
-	NIXSHELL:        func() SegmentWriter { return &segments.NixShell{} },
-	NX:              func() SegmentWriter { return &segments.Nx{} },
-	OCAML:           func() SegmentWriter { return &segments.OCaml{} },
-	OS:              func() SegmentWriter { return &segments.Os{} },
-	OWM:             func() SegmentWriter { return &segments.Owm{} },
-	PATH:            func() SegmentWriter { return &segments.Path{} },
-	PERL:            func() SegmentWriter { return &segments.Perl{} },
-	PHP:             func() SegmentWriter { return &segments.Php{} },
-	PLASTIC:         func() SegmentWriter { return &segments.Plastic{} },
-	PNPM:            func() SegmentWriter { return &segments.Pnpm{} },
-	PROJECT:         func() SegmentWriter { return &segments.Project{} },
-	PULUMI:          func() SegmentWriter { return &segments.Pulumi{} },
-	PYTHON:          func() SegmentWriter { return &segments.Python{} },
-	QUASAR:          func() SegmentWriter { return &segments.Quasar{} },
-	R:               func() SegmentWriter { return &segments.R{} },
-	REACT:           func() SegmentWriter { return &segments.React{} },
-	ROOT:            func() SegmentWriter { return &segments.Root{} },
-	RUBY:            func() SegmentWriter { return &segments.Ruby{} },
-	RUST:            func() SegmentWriter { return &segments.Rust{} },
-	SAPLING:         func() SegmentWriter { return &segments.Sapling{} },
-	SESSION:         func() SegmentWriter { return &segments.Session{} },
-	SHELL:           func() SegmentWriter { return &segments.Shell{} },
-	SITECORE:        func() SegmentWriter { return &segments.Sitecore{} },
-	SPOTIFY:         func() SegmentWriter { return &segments.Spotify{} },
-	STATUS:          func() SegmentWriter { return &segments.Status{} },
-	STRAVA:          func() SegmentWriter { return &segments.Strava{} },
-	SVN:             func() SegmentWriter { return &segments.Svn{} },
-	SWIFT:           func() SegmentWriter { return &segments.Swift{} },
-	SYSTEMINFO:      func() SegmentWriter { return &segments.SystemInfo{} },
-	TALOSCTL:        func() SegmentWriter { return &segments.TalosCTL{} },
-	TERRAFORM:       func() SegmentWriter { return &segments.Terraform{} },
-	TEXT:            func() SegmentWriter { return &segments.Text{} },
-	TIME:            func() SegmentWriter { return &segments.Time{} },
-	UI5TOOLING:      func() SegmentWriter { return &segments.UI5Tooling{} },
-	UMBRACO:         func() SegmentWriter { return &segments.Umbraco{} },
-	UNITY:           func() SegmentWriter { return &segments.Unity{} },
-	UPGRADE:         func() SegmentWriter { return &segments.Upgrade{} },
-	VALA:            func() SegmentWriter { return &segments.Vala{} },
-	WAKATIME:        func() SegmentWriter { return &segments.Wakatime{} },
-	WINREG:          func() SegmentWriter { return &segments.WindowsRegistry{} },
-	WITHINGS:        func() SegmentWriter { return &segments.Withings{} },
-	XMAKE:           func() SegmentWriter { return &segments.XMake{} },
-	YARN:            func() SegmentWriter { return &segments.Yarn{} },
-	YTM:             func() SegmentWriter { return &segments.Ytm{} },
-}
 
 func (segment *Segment) MapSegmentWithWriter(env runtime.Environment) error {
 	segment.env = env
 
-	if segment.Properties == nil {
-		segment.Properties = make(properties.Map)
+	if segment.Options == nil {
+		segment.Options = make(options.Map)
 	}
 
-	if f, ok := Segments[segment.Type]; ok {
-		writer := f()
-		wrapper := &properties.Wrapper{
-			Properties: segment.Properties,
-		}
-		writer.Init(wrapper, env)
-		segment.writer = writer
-		return nil
+	writer, err := newSegmentWriter(segment.Type)
+	if err != nil {
+		return err
 	}
 
-	return errors.New("unable to map writer")
+	// nil on a build with no writers (see segment_registry_js.go); the segment renders from its
+	// recorded data instead.
+	if writer != nil {
+		writer.Init(segment.Options, env)
+	}
+
+	// After Init, so the writer can layer the analyzed field set on top of a
+	// fully initialized state. Unstamped segments (config never resolved)
+	// deliver an unanalyzable set whose heuristic sources are the segment's
+	// own raw texts, so even library callers get display-correct fetching.
+	if consumer, ok := writer.(FieldSetConsumer); ok {
+		consumer.SetReferencedFields(segment.refSet())
+	}
+
+	segment.writer = writer
+
+	return nil
 }

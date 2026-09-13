@@ -3,44 +3,40 @@ package cli
 import (
 	"fmt"
 	"os"
-	"time"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-
-	"github.com/spf13/cobra"
+	"github.com/jandedobbeleer/oh-my-posh/src/cache"
+	"github.com/jandedobbeleer/oh-my-posh/src/cli/dsc"
+	"github.com/jandedobbeleer/oh-my-posh/src/cmdtree"
+	"github.com/jandedobbeleer/oh-my-posh/src/config"
+	basedsc "github.com/jandedobbeleer/oh-my-posh/src/dsc"
 )
 
-// configCmd represents the config command
-var configCmd = &cobra.Command{
+var configCmd = &cmdtree.Command{
 	Use:   "config edit",
 	Short: "Interact with the config",
 	Long: `Interact with the config.
 
-You can export, migrate or edit the config (via the editor specified in the environment variable "EDITOR").`,
+You can export or edit the config (via the editor specified in the environment variable "EDITOR").`,
 	ValidArgs: []string{
-		"export",
-		"migrate",
 		"edit",
-		"get",
 	},
 	Args: NoArgsOrOneValidArg,
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(cmd *cmdtree.Command, args []string) {
 		if len(args) == 0 {
 			_ = cmd.Help()
 			return
 		}
+
 		switch args[0] {
 		case "edit":
-			env := &runtime.Terminal{
-				CmdFlags: &runtime.Flags{
-					Config: configFlag,
-				},
+			cache.Init(os.Getenv("POSH_SHELL"))
+			if configPath, OK := cache.Session.Get[string](config.SourceKey); OK {
+				exitcode = editFileWithEditor(configPath)
+				return
 			}
-			env.ResolveConfigPath()
-			os.Exit(editFileWithEditor(env.CmdFlags.Config))
-		case "get":
-			// only here for backwards compatibility
-			fmt.Print(time.Now().UnixNano() / 1000000)
+
+			fmt.Println("no config found in session cache")
+			exitcode = 666
 		default:
 			_ = cmd.Help()
 		}
@@ -48,5 +44,6 @@ You can export, migrate or edit the config (via the editor specified in the envi
 }
 
 func init() {
+	configCmd.AddCommand(basedsc.Command(dsc.ConfigDSC()))
 	RootCmd.AddCommand(configCmd)
 }

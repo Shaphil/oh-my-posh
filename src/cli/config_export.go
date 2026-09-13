@@ -1,21 +1,25 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/jandedobbeleer/oh-my-posh/src/cache"
 	"github.com/jandedobbeleer/oh-my-posh/src/config"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/runtime/path"
 
-	"github.com/spf13/cobra"
+	"github.com/jandedobbeleer/oh-my-posh/src/cmdtree"
 )
 
-var output string
+var (
+	format string
+	output string
+)
 
-// exportCmd represents the export command
-var exportCmd = &cobra.Command{
+var exportCmd = &cmdtree.Command{
 	Use:   "export",
 	Short: "Export your config",
 	Long: `Export your config.
@@ -31,70 +35,75 @@ Exports the config file "~/myconfig.omp.json" in TOML format and prints the resu
 > oh-my-posh config export --output ~/new_config.omp.json
 
 Exports the current config to "~/new_config.omp.json" (in JSON format).`,
-	Args: cobra.NoArgs,
-	Run: func(_ *cobra.Command, _ []string) {
-		if len(output) == 0 && len(format) == 0 {
+	Args: cmdtree.NoArgs,
+	Run: func(_ *cmdtree.Command, _ []string) {
+		if output == "" && format == "" {
 			// usage error
 			fmt.Println("neither output path nor export format is specified")
-			os.Exit(2)
+			exitcode = 2
+			return
 		}
 
-		env := &runtime.Terminal{
-			CmdFlags: &runtime.Flags{
-				Config: configFlag,
-			},
-		}
-		env.Init()
-		defer env.Close()
-		cfg := config.Load(env)
+		cache.Init(os.Getenv("POSH_SHELL"))
 
-		validateExportFormat := func() {
+		setConfigFlag()
+
+		cfg := config.Load(configFlag)
+
+		validateExportFormat := func() error {
 			format = strings.ToLower(format)
 			switch format {
-			case "json", "jsonc":
+			case config.JSON, config.JSONC:
 				format = config.JSON
-			case "toml", "tml":
+			case config.TOML, config.TML:
 				format = config.TOML
-			case "yaml", "yml":
+			case config.YAML, config.YML:
 				format = config.YAML
 			default:
-				formats := []string{"json", "jsonc", "toml", "tml", "yaml", "yml"}
+				formats := []string{config.JSON, config.JSONC, config.TOML, config.TML, config.YAML, config.YML}
 				// usage error
 				fmt.Printf("export format must be one of these: %s\n", strings.Join(formats, ", "))
-				os.Exit(2)
+				exitcode = 2
+				return errors.New("invalid export format")
 			}
+
+			return nil
 		}
 
 		if len(format) != 0 {
-			validateExportFormat()
+			if err := validateExportFormat(); err != nil {
+				return
+			}
 		}
 
-		if len(output) == 0 {
+		if output == "" {
 			fmt.Print(cfg.Export(format))
 			return
 		}
 
-		cfg.Output = cleanOutputPath(output, env)
+		cfg.Source = cleanOutputPath(output)
 
-		if len(format) == 0 {
+		if format == "" {
 			format = strings.TrimPrefix(filepath.Ext(output), ".")
-			validateExportFormat()
+			if err := validateExportFormat(); err != nil {
+				return
+			}
 		}
 
 		cfg.Write(format)
 	},
 }
 
-func cleanOutputPath(path string, env runtime.Environment) string {
-	path = runtime.ReplaceTildePrefixWithHomeDir(env, path)
+func cleanOutputPath(output string) string {
+	output = path.ReplaceTildePrefixWithHomeDir(output)
 
-	if !filepath.IsAbs(path) {
-		if absPath, err := filepath.Abs(path); err == nil {
-			path = absPath
+	if !filepath.IsAbs(output) {
+		if absPath, err := filepath.Abs(output); err == nil {
+			output = absPath
 		}
 	}
 
-	return filepath.Clean(path)
+	return filepath.Clean(output)
 }
 
 func init() {

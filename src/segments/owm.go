@@ -7,34 +7,26 @@ import (
 	"math"
 	"net/url"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 )
 
 type Owm struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
-	Temperature int
 	Weather     string
 	URL         string
 	units       string
 	UnitIcon    string
+	Temperature int
 }
 
 const (
-	// APIKey openweathermap api key
-	APIKey properties.Property = "api_key"
-	// Location openweathermap location
-	Location properties.Property = "location"
-	// Units openweathermap units
-	Units properties.Property = "units"
-	// CacheKeyResponse key used when caching the response
-	CacheKeyResponse string = "owm_response"
-	// CacheKeyURL key used when caching the url responsible for the response
-	CacheKeyURL string = "owm_url"
-
-	PoshOWMAPIKey = "POSH_OWM_API_KEY"
+	APIKey           options.Option = "api_key"
+	Location         options.Option = "location"
+	Units            options.Option = "units"
+	CacheKeyResponse string         = "owm_response"
+	CacheKeyURL      string         = "owm_url"
 )
 
 type weather struct {
@@ -55,7 +47,7 @@ func (d *Owm) Enabled() bool {
 	err := d.setStatus()
 
 	if err != nil {
-		d.env.Error(err)
+		log.Error(err)
 		return false
 	}
 
@@ -67,37 +59,22 @@ func (d *Owm) Template() string {
 }
 
 func (d *Owm) getResult() (*owmDataResponse, error) {
-	cacheTimeout := d.props.GetInt(properties.CacheTimeout, properties.DefaultCacheTimeout)
 	response := new(owmDataResponse)
 
-	if cacheTimeout > 0 {
-		val, found := d.env.Cache().Get(CacheKeyResponse)
-		if found {
-			err := json.Unmarshal([]byte(val), response)
-			if err != nil {
-				return nil, err
-			}
-
-			d.URL, _ = d.env.Cache().Get(CacheKeyURL)
-			return response, nil
-		}
+	apikey := d.options.Template(APIKey, "", d)
+	if apikey == "" {
+		return nil, errors.New("no api key found")
 	}
 
-	apikey := properties.OneOf(d.props, ".", APIKey, "apiKey")
-	if len(apikey) == 0 {
-		apikey = d.env.Getenv(PoshOWMAPIKey)
+	location := d.options.Template(Location, "", d)
+	if location == "" {
+		return nil, errors.New("no location found")
 	}
-
-	location := d.props.GetString(Location, "De Bilt,NL")
 
 	location = url.QueryEscape(location)
 
-	if len(apikey) == 0 || len(location) == 0 {
-		return nil, errors.New("no api key or location found")
-	}
-
-	units := d.props.GetString(Units, "standard")
-	httpTimeout := d.props.GetInt(properties.HTTPTimeout, properties.DefaultHTTPTimeout)
+	units := d.options.String(Units, "standard")
+	httpTimeout := d.options.Int(options.HTTPTimeout, options.DefaultHTTPTimeout)
 
 	d.URL = fmt.Sprintf("https://api.openweathermap.org/data/2.5/weather?q=%s&units=%s&appid=%s", location, units, apikey)
 
@@ -105,21 +82,17 @@ func (d *Owm) getResult() (*owmDataResponse, error) {
 	if err != nil {
 		return new(owmDataResponse), err
 	}
+
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return new(owmDataResponse), err
 	}
 
-	if cacheTimeout > 0 {
-		// persist new forecasts in cache
-		d.env.Cache().Set(CacheKeyResponse, string(body), cacheTimeout)
-		d.env.Cache().Set(CacheKeyURL, d.URL, cacheTimeout)
-	}
 	return response, nil
 }
 
 func (d *Owm) setStatus() error {
-	units := d.props.GetString(Units, "standard")
+	units := d.options.String(Units, "standard")
 
 	q, err := d.getResult()
 	if err != nil {
@@ -127,12 +100,12 @@ func (d *Owm) setStatus() error {
 	}
 
 	if len(q.Data) == 0 {
-		return errors.New("No data found")
+		return errors.New("no data found")
 	}
 
 	id := q.Data[0].TypeID
 
-	d.Temperature = int(math.Round(q.temperature.Value))
+	d.Temperature = int(math.Round(q.Value))
 	icon := ""
 	switch id {
 	case "01n":
@@ -186,9 +159,4 @@ func (d *Owm) setStatus() error {
 		d.UnitIcon = "°K" // <b>K</b>"
 	}
 	return nil
-}
-
-func (d *Owm) Init(props properties.Properties, env runtime.Environment) {
-	d.props = props
-	d.env = env
 }

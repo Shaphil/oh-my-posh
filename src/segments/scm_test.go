@@ -3,9 +3,12 @@ package segments
 import (
 	"testing"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
+	"github.com/jandedobbeleer/oh-my-posh/src/cache"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
+	"github.com/jandedobbeleer/oh-my-posh/src/shell"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -13,8 +16,8 @@ import (
 func TestScmStatusChanged(t *testing.T) {
 	cases := []struct {
 		Case     string
-		Expected bool
 		Status   ScmStatus
+		Expected bool
 	}{
 		{
 			Case:     "No changes",
@@ -101,7 +104,7 @@ func TestScmStatusString(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		assert.Equal(t, tc.Expected, tc.Status.String(), tc.Case)
+		assert.Equal(t, tc.Expected, tc.Status.String().String(), tc.Case)
 	}
 }
 
@@ -128,13 +131,15 @@ func TestHasCommand(t *testing.T) {
 		env.On("InWSLSharedDrive").Return(tc.IsWslSharedPath)
 		env.On("HasCommand", "git").Return(true)
 		env.On("HasCommand", "git.exe").Return(!tc.NativeFallback)
-		s := &scm{
-			env: env,
-			props: properties.Map{
-				NativeFallback: tc.NativeFallback,
-			},
+
+		props := options.Map{
+			NativeFallback: tc.NativeFallback,
+		}
+
+		s := &Scm{
 			command: tc.Command,
 		}
+		s.Init(props, env)
 
 		_ = s.hasCommand(GITCOMMAND)
 		assert.Equal(t, tc.ExpectedCommand, s.command, tc.Case)
@@ -143,13 +148,12 @@ func TestHasCommand(t *testing.T) {
 
 func TestFormatBranch(t *testing.T) {
 	cases := []struct {
-		Case             string
-		Expected         string
-		Input            string
-		MappedBranches   map[string]string
-		BranchMaxLength  int
-		TruncateSymbol   string
-		NoFullBranchPath bool
+		MappedBranches map[string]string
+		Case           string
+		Expected       string
+		Input          string
+		BranchTemplate string
+		Upstream       string
 	}{
 		{
 			Case:     "No settings",
@@ -157,38 +161,34 @@ func TestFormatBranch(t *testing.T) {
 			Expected: "main",
 		},
 		{
-			Case:            "BranchMaxLength higher than branch name",
-			Input:           "main",
-			Expected:        "main",
-			BranchMaxLength: 10,
+			Case:           "BranchMaxLength higher than branch name",
+			Input:          "main",
+			Expected:       "main",
+			BranchTemplate: "{{ trunc 5 .Branch }}",
 		},
 		{
-			Case:            "BranchMaxLength lower than branch name",
-			Input:           "feature/test-this-branch",
-			Expected:        "featu",
-			BranchMaxLength: 5,
+			Case:           "BranchMaxLength lower than branch name",
+			Input:          "feature/test-this-branch",
+			Expected:       "featu",
+			BranchTemplate: "{{ trunc 5 .Branch }}",
 		},
 		{
-			Case:            "BranchMaxLength lower than branch name, with truncate symbol",
-			Input:           "feature/test-this-branch",
-			Expected:        "feat…",
-			BranchMaxLength: 5,
-			TruncateSymbol:  "…",
+			Case:           "BranchMaxLength lower than branch name, with truncate symbol",
+			Input:          "feature/test-this-branch",
+			Expected:       "feat…",
+			BranchTemplate: "{{ truncE 5 .Branch }}",
 		},
 		{
-			Case:             "BranchMaxLength lower than branch name, with truncate symbol and no FullBranchPath",
-			Input:            "feature/test-this-branch",
-			Expected:         "test…",
-			BranchMaxLength:  5,
-			TruncateSymbol:   "…",
-			NoFullBranchPath: true,
+			Case:           "BranchMaxLength lower than branch name, with truncate symbol and no FullBranchPath",
+			Input:          "feature/test-this-branch",
+			Expected:       "test…",
+			BranchTemplate: "{{ truncE 5 (base .Branch) }}",
 		},
 		{
-			Case:            "BranchMaxLength lower to branch name, with truncate symbol",
-			Input:           "feat",
-			Expected:        "feat",
-			BranchMaxLength: 5,
-			TruncateSymbol:  "…",
+			Case:           "BranchMaxLength lower to branch name, with truncate symbol",
+			Input:          "feat",
+			Expected:       "feat",
+			BranchTemplate: "{{ trunc 5 .Branch }}",
 		},
 		{
 			Case:     "Branch mapping, no BranchMaxLength",
@@ -200,30 +200,88 @@ func TestFormatBranch(t *testing.T) {
 			},
 		},
 		{
-			Case:            "Branch mapping, with BranchMaxLength",
-			Input:           "feat/my-new-feature",
-			Expected:        "🚀 my-",
-			BranchMaxLength: 5,
+			Case:           "Branch mapping, with BranchMaxLength",
+			Input:          "feat/my-new-feature",
+			Expected:       "🚀 my-",
+			BranchTemplate: "{{ trunc 5 .Branch }}",
 			MappedBranches: map[string]string{
 				"feat/*": "🚀 ",
 				"bug/*":  "🐛 ",
 			},
 		},
+		{
+			Case:           "Branch with upstream",
+			Input:          "feat/my-new-feature",
+			Expected:       "feat/my-new-feature@origin",
+			Upstream:       "origin",
+			BranchTemplate: "{{ .Branch }}{{ if .Upstream }}@{{ .Upstream }}{{ end }}",
+		},
+		{
+			// a branch name is repo-controlled: its chevrons must be escaped so
+			// the writer cannot parse them as anchors (the writer renders
+			// <<>red<>> as literal <red>)
+			Case:     "Branch name with anchor-shaped text is escaped",
+			Input:    "<red>pwned-branch",
+			Expected: "<<>red<>>pwned-branch",
+		},
+		{
+			Case:     "Branch name with hyperlink markup is escaped",
+			Input:    "<LINK>https://attacker.example<TEXT>x",
+			Expected: "<<>LINK<>>https://attacker.example<<>TEXT<>>x",
+		},
+		{
+			// the mapped value is user configuration and keeps its anchors
+			Case:     "Mapped branch value keeps markup",
+			Input:    "feat/x",
+			Expected: "<#ff0000>feat</> x",
+			MappedBranches: map[string]string{
+				"feat/*": "<#ff0000>feat</> ",
+			},
+		},
+		{
+			// data flows through branch_template escaped; config text keeps anchors
+			Case:           "Branch template escapes data, keeps config anchors",
+			Input:          "<red>x",
+			Expected:       "<b><<>red<>>x</>",
+			BranchTemplate: "<b>{{ .Branch }}</>",
+		},
+		{
+			Case:           "Mapped branch keeps markup through the branch template",
+			Input:          "feat/x",
+			Expected:       "<#ff0000>feat</> x (mapped)",
+			BranchTemplate: "{{ .Branch }} (mapped)",
+			MappedBranches: map[string]string{
+				"feat/*": "<#ff0000>feat</> ",
+			},
+		},
+		{
+			Case:           "Mapped branch survives string functions in the branch template",
+			Input:          "feat/my-new-feature",
+			Expected:       "<#FF0000>FEAT</> MY-NEW",
+			BranchTemplate: "{{ .Branch | trimSuffix \"-feature\" | upper }}",
+			MappedBranches: map[string]string{
+				"feat/*": "<#ff0000>feat</> ",
+			},
+		},
 	}
 
 	for _, tc := range cases {
-		g := &Git{
-			scm: scm{
-				props: properties.Map{
-					MappedBranches:  tc.MappedBranches,
-					BranchMaxLength: tc.BranchMaxLength,
-					TruncateSymbol:  tc.TruncateSymbol,
-					FullBranchPath:  !tc.NoFullBranchPath,
-				},
-			},
+		props := options.Map{
+			MappedBranches: tc.MappedBranches,
+			BranchTemplate: tc.BranchTemplate,
 		}
 
-		got := g.formatBranch(tc.Input)
-		assert.Equal(t, tc.Expected, got, tc.Case)
+		s := &Scm{
+			Upstream: tc.Upstream,
+		}
+		s.Init(props, nil)
+
+		env := new(mock.Environment)
+		env.On("Shell").Return(shell.BASH)
+		template.Cache = new(cache.Template)
+		template.Init(env, nil, nil)
+
+		got := s.formatBranch(tc.Input)
+		assert.Equal(t, tc.Expected, got.String(), tc.Case)
 	}
 }

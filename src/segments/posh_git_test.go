@@ -1,23 +1,25 @@
 package segments
 
 import (
+	"errors"
+	"sync"
 	"testing"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 
 	"github.com/stretchr/testify/assert"
-	testify_ "github.com/stretchr/testify/mock"
 )
 
 func TestPoshGitSegment(t *testing.T) {
 	cases := []struct {
 		Case              string
 		PoshGitJSON       string
-		FetchUpstreamIcon bool
 		Template          string
 		ExpectedString    string
+		FetchUpstreamIcon bool
 		ExpectedEnabled   bool
 	}{
 		{
@@ -73,7 +75,7 @@ func TestPoshGitSegment(t *testing.T) {
 			ExpectedEnabled: true,
 		},
 		{
-			Case: "Changes in Working and Staging, branch ahead an behind",
+			Case: "Changes in Working and Staging, branch ahead and behind",
 			PoshGitJSON: `
 			{
 				"RepoName": "oh-my-posh",
@@ -187,21 +189,25 @@ func TestPoshGitSegment(t *testing.T) {
 		env.On("Getenv", poshGitEnv).Return(tc.PoshGitJSON)
 		env.On("Home").Return("/Users/bill")
 		env.On("GOOS").Return(runtime.LINUX)
-		env.On("Error", testify_.Anything)
 		env.On("RunCommand", "git", []string{"-C", "", "--no-optional-locks", "-c", "core.quotepath=false",
-			"-c", "color.status=false", "remote", "get-url", "origin"}).Return("github.com/cli", nil)
+			"-c", "color.status=false", "remote", "get-url", origin}).Return("github.com/cli", nil)
 
 		g := &Git{
-			scm: scm{
-				env: env,
-				props: &properties.Map{
-					FetchUpstreamIcon: tc.FetchUpstreamIcon,
-				},
-				command: GITCOMMAND,
-			},
+			command: GITCOMMAND,
+		}
+		g.Init(options.Map{}, env)
+
+		// the upstream icon probe is derived from template references now
+		if tc.FetchUpstreamIcon {
+			g.SetReferencedFields(template.RefSet{Fields: gitUpstreamIconFields, Analyzable: true})
 		}
 
-		if len(tc.Template) == 0 {
+		g.configOnce = sync.Once{}
+		g.configOnce.Do(func() {
+			g.configErr = errors.New("no config")
+		})
+
+		if tc.Template == "" {
 			tc.Template = g.Template()
 		}
 
@@ -236,11 +242,9 @@ func TestParsePoshGitHEAD(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		g := &Git{
-			scm: scm{
-				props: &properties.Map{},
-			},
-		}
-		assert.Equal(t, tc.ExpectedString, g.parsePoshGitHEAD(tc.HEAD), tc.Case)
+		g := &Git{}
+		g.Init(&options.Map{}, new(mock.Environment))
+
+		assert.Equal(t, tc.ExpectedString, g.parsePoshGitHEAD(tc.HEAD).String(), tc.Case)
 	}
 }

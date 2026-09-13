@@ -7,97 +7,136 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
+	"github.com/jandedobbeleer/oh-my-posh/src/runtime/path"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 )
 
 type Python struct {
-	language
-
 	Venv string
+	Language
 }
 
 const (
-	// FetchVirtualEnv fetches the virtual env
-	FetchVirtualEnv      properties.Property = "fetch_virtual_env"
-	UsePythonVersionFile properties.Property = "use_python_version_file"
-	FolderNameFallback   properties.Property = "folder_name_fallback"
-	DefaultVenvNames     properties.Property = "default_venv_names"
+	FetchVirtualEnv      options.Option = "fetch_virtual_env"
+	UsePythonVersionFile options.Option = "use_python_version_file"
+	FolderNameFallback   options.Option = "folder_name_fallback"
+	DefaultVenvNames     options.Option = "default_venv_names"
+
+	python3ToolName    = "python3"
+	pythonVersionRegex = "(?:Python " + versionRegex + ")"
 )
 
 func (p *Python) Template() string {
 	return " {{ if .Error }}{{ .Error }}{{ else }}{{ if .Venv }}{{ .Venv }} {{ end }}{{ .Full }}{{ end }} "
 }
 
-func (p *Python) Init(props properties.Properties, env runtime.Environment) {
-	p.language = language{
-		env:         env,
-		props:       props,
-		extensions:  []string{"*.py", "*.ipynb", "pyproject.toml", "venv.bak"},
-		folders:     []string{".venv", "venv", "virtualenv", "venv-win", "pyenv-win"},
-		loadContext: p.loadContext,
-		inContext:   p.inContext,
-		commands: []*cmd{
-			{
-				getVersion: p.pyenvVersion,
-				regex:      `(?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+)))`,
-			},
-			{
-				executable: "python",
-				args:       []string{"--version"},
-				regex:      `(?:Python (?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+))))`,
-			},
-			{
-				executable: "python3",
-				args:       []string{"--version"},
-				regex:      `(?:Python (?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+))))`,
-			},
-			{
-				executable: "py",
-				args:       []string{"--version"},
-				regex:      `(?:Python (?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+))))`,
-			},
-		},
-		versionURLTemplate: "https://docs.python.org/release/{{ .Major }}.{{ .Minor }}.{{ .Patch }}/whatsnew/changelog.html#python-{{ .Major }}-{{ .Minor }}-{{ .Patch }}",
-		displayMode:        props.GetString(DisplayMode, DisplayModeEnvironment),
-	}
+func (p *Python) Enabled() bool {
+	p.loadSpec()
+
+	return p.Language.Enabled()
 }
 
-func (p *Python) Enabled() bool {
-	return p.language.Enabled()
+// Activation implements the activation gate; see Language.activation.
+func (p *Python) Activation() Activation {
+	p.loadSpec()
+
+	return p.activation()
+}
+
+func (p *Python) loadSpec() {
+	p.extensions = []string{"*.py", "*.ipynb", "pyproject.toml", "venv.bak"}
+	p.folders = []string{".venv", "venv", "virtualenv", "venv-win", "pyenv-win"}
+	// the pyenv getVersion overrides Venv with the pyenv-resolved virtualenv
+	// name, so a .Venv-only template must still trigger the fetch to keep
+	// that naming (a slight over-fetch for non-pyenv users, deliberately:
+	// wrong display costs more)
+	p.extraVersionFields = []string{"Venv"}
+
+	// None of this tooling is marked versionCacheable. "pyenv" goes through
+	// getVersion (see pyenvVersion) so the flag would be inert there anyway,
+	// but the deeper reason applies to python/python3/py too: whichever of
+	// them pyenv is managing resolves from PATH to a shim script whose own
+	// path/mtime/size never change while its target version does, per
+	// directory (via .python-version or $PYENV_VERSION) - and there is no
+	// way at cmd-definition time to tell a pyenv shim apart from a real
+	// interpreter that would otherwise be safe to cache. "uv" is unambiguous:
+	// `uv run` resolves the interpreter from the current project's
+	// pyproject.toml/venv, so its output is directory-dependent by design.
+	p.tooling = map[string]*cmd{
+		"pyenv": {
+			getVersion: p.pyenvVersion,
+			regex:      versionRegex,
+		},
+		pythonToolName: {
+			executable: pythonToolName,
+			args:       []string{versionFlagArg},
+			regex:      pythonVersionRegex,
+		},
+		python3ToolName: {
+			executable: python3ToolName,
+			args:       []string{versionFlagArg},
+			regex:      pythonVersionRegex,
+		},
+		"py": {
+			executable: "py",
+			args:       []string{versionFlagArg},
+			regex:      pythonVersionRegex,
+		},
+		"uv": {
+			executable: "uv",
+			args:       []string{"run", "--no-sync", "--quiet", "--no-python-downloads", pythonToolName, versionFlagArg},
+			regex:      pythonVersionRegex,
+		},
+	}
+
+	// Default tooling order - users can override via "tooling" option
+	p.defaultTooling = []string{"pyenv", pythonToolName, python3ToolName, "py"}
+
+	p.versionURLTemplate = "https://docs.python.org/release/{{ .Major }}.{{ .Minor }}.{{ .Patch }}/whatsnew/changelog.html#python-{{ .Major }}-{{ .Minor }}-{{ .Patch }}"
+	p.displayMode = p.options.String(DisplayMode, DisplayModeEnvironment)
+	p.Language.loadContext = p.loadContext
+	p.Language.inContext = p.inContext
+	// The declared triggers for the venv context: with none of these set (and
+	// no matching file or folder in the cwd), the segment gates off without
+	// probing. A venv that is only discoverable through pyvenv.cfg next to
+	// the python executable, with no environment variable exported and no
+	// python files around, no longer activates the segment - an accepted
+	// trade-off for skipping the probe in every unrelated directory.
+	p.contextEnvVars = []string{"VIRTUAL_ENV", "CONDA_ENV_PATH", "CONDA_DEFAULT_ENV"}
 }
 
 func (p *Python) loadContext() {
-	if !p.language.props.GetBool(FetchVirtualEnv, true) {
+	if !p.options.Bool(FetchVirtualEnv, true) {
 		return
 	}
 	if prompt := p.pyvenvCfgPrompt(); len(prompt) > 0 {
 		p.Venv = prompt
 		return
 	}
-	venvVars := []string{
-		"VIRTUAL_ENV",
-		"CONDA_ENV_PATH",
-		"CONDA_DEFAULT_ENV",
-	}
 
-	folderNameFallback := p.language.props.GetBool(FolderNameFallback, true)
-	defaultVenvNames := p.language.props.GetStringArray(DefaultVenvNames, []string{
+	// declared in loadSpec so the activation gate and this lookup stay in sync
+	venvVars := p.contextEnvVars
+
+	folderNameFallback := p.options.Bool(FolderNameFallback, true)
+	defaultVenvNames := p.options.StringArray(DefaultVenvNames, []string{
 		".venv",
 		"venv",
 	})
 
 	var venv string
 	for _, venvVar := range venvVars {
-		venv = p.language.env.Getenv(venvVar)
-		if len(venv) == 0 {
+		venv = p.env.Getenv(venvVar)
+		if venv == "" {
 			continue
 		}
 
-		name := runtime.Base(p.language.env, venv)
+		name := path.Base(venv)
+		log.Debugf("virtual env name: %s", name)
 		if folderNameFallback && slices.Contains(defaultVenvNames, name) {
 			venv = strings.TrimSuffix(venv, name)
-			name = runtime.Base(p.language.env, venv)
+			name = path.Base(venv)
+			log.Debugf("virtual env name (fallback): %s", name)
 		}
 
 		if p.canUseVenvName(name) {
@@ -112,15 +151,18 @@ func (p *Python) inContext() bool {
 }
 
 func (p *Python) canUseVenvName(name string) bool {
-	if p.language.props.GetBool(properties.DisplayDefault, true) {
+	if p.options.Bool(options.DisplayDefault, true) {
 		return true
 	}
+
 	invalidNames := [2]string{"system", "base"}
 	for _, a := range invalidNames {
 		if a == name {
+			log.Debugf("virtual env name %s is invalid", name)
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -128,25 +170,28 @@ func (p *Python) pyenvVersion() (string, error) {
 	// Use `pyenv root` instead of $PYENV_ROOT?
 	// Is our Python executable at $PYENV_ROOT/bin/python ?
 	// Should p.env expose command paths?
-	path := p.env.CommandPath("python")
-	if len(path) == 0 {
-		path = p.env.CommandPath("python3")
+	cmdPath := p.env.CommandPath(pythonToolName)
+	if cmdPath == "" {
+		cmdPath = p.env.CommandPath(python3ToolName)
 	}
-	if len(path) == 0 {
+
+	if cmdPath == "" {
 		return "", errors.New("no python executable found")
 	}
+
 	pyEnvRoot := p.env.Getenv("PYENV_ROOT")
-	// TODO:  pyenv-win has this at $PYENV_ROOT/pyenv-win/shims
-	if path != filepath.Join(pyEnvRoot, "shims", "python") {
-		return "", fmt.Errorf("executable at %s is not a pyenv shim", path)
+	if pyEnvRoot == "" || !strings.HasPrefix(cmdPath, pyEnvRoot) {
+		return "", fmt.Errorf("executable at %s is not a pyenv shim", cmdPath)
 	}
+
 	// pyenv version-name will return current version or virtualenv
 	cmdOutput, err := p.env.RunCommand("pyenv", "version-name")
 	if err != nil {
 		return "", err
 	}
-	versionString := strings.Split(cmdOutput, ":")[0]
-	if len(versionString) == 0 {
+
+	versionString, _, found := strings.Cut(cmdOutput, ":")
+	if !found || versionString == "" {
 		return "", errors.New("no pyenv version-name found")
 	}
 
@@ -155,45 +200,54 @@ func (p *Python) pyenvVersion() (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	// ../versions/(version)[/envs/(virtualenv)]
 	shortPath, err := filepath.Rel(filepath.Join(pyEnvRoot, "versions"), realPath)
 	if err != nil {
 		return "", err
 	}
+
 	// override virtualenv if pyenv set one
-	parts := strings.Split(shortPath, string(filepath.Separator))
+	parts := strings.SplitN(shortPath, string(filepath.Separator), 4)
 	if len(parts) > 2 && p.canUseVenvName(parts[2]) {
 		p.Venv = parts[2]
 	}
+
 	return parts[0], nil
 }
 
 func (p *Python) pyvenvCfgPrompt() string {
-	path := p.language.env.CommandPath("python")
-	if len(path) == 0 {
-		path = p.language.env.CommandPath("python3")
+	cmdPath := p.env.CommandPath(pythonToolName)
+	if cmdPath == "" {
+		cmdPath = p.env.CommandPath(python3ToolName)
 	}
-	if len(path) == 0 {
+
+	if cmdPath == "" {
 		return ""
 	}
-	pyvenvDir := filepath.Dir(path)
-	if !p.language.env.HasFilesInDir(pyvenvDir, "pyvenv.cfg") {
+
+	pyvenvDir := filepath.Dir(cmdPath)
+	if !p.env.HasFilesInDir(pyvenvDir, "pyvenv.cfg") {
 		pyvenvDir = filepath.Dir(pyvenvDir)
 	}
-	if !p.language.env.HasFilesInDir(pyvenvDir, "pyvenv.cfg") {
+
+	if !p.env.HasFilesInDir(pyvenvDir, "pyvenv.cfg") {
 		return ""
 	}
+
 	pyvenvCfg := p.env.FileContent(filepath.Join(pyvenvDir, "pyvenv.cfg"))
-	for _, line := range strings.Split(pyvenvCfg, "\n") {
-		lineSplit := strings.SplitN(line, "=", 2)
-		if len(lineSplit) != 2 {
+	for line := range strings.SplitSeq(pyvenvCfg, "\n") {
+		key, value, found := strings.Cut(line, "=")
+		if !found {
 			continue
 		}
-		key := strings.TrimSpace(lineSplit[0])
+
+		key = strings.TrimSpace(key)
 		if key == "prompt" {
-			value := strings.TrimSpace(lineSplit[1])
-			return value
+			value := strings.TrimSpace(value)
+			return strings.Trim(value, "\"")
 		}
 	}
+
 	return ""
 }

@@ -4,11 +4,9 @@ import (
 	"testing"
 
 	"github.com/jandedobbeleer/oh-my-posh/src/cache"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
 
 	"github.com/stretchr/testify/assert"
-	testify_ "github.com/stretchr/testify/mock"
 )
 
 func TestGlob(t *testing.T) {
@@ -24,20 +22,13 @@ func TestGlob(t *testing.T) {
 	}
 
 	env := &mock.Environment{}
-	env.On("DebugF", testify_.Anything, testify_.Anything).Return(nil)
-	env.On("TemplateCache").Return(&cache.Template{
-		Env: make(map[string]string),
-	})
-	env.On("Flags").Return(&runtime.Flags{})
+	env.On("Shell").Return("foo")
+
+	Cache = new(cache.Template)
+	Init(env, nil, nil)
 
 	for _, tc := range cases {
-		tmpl := &Text{
-			Template: tc.Template,
-			Context:  nil,
-			Env:      env,
-		}
-
-		text, err := tmpl.Render()
+		text, err := RenderTrusted(tc.Template, nil)
 		if tc.ShouldError {
 			assert.Error(t, err)
 			continue

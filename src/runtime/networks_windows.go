@@ -7,6 +7,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
 	"golang.org/x/sys/windows"
 )
 
@@ -18,19 +19,16 @@ var (
 	hWlanEnumInterfaces = wlanapi.NewProc("WlanEnumInterfaces")
 )
 
-//nolint:revive
 type MIN_IF_TABLE2 struct {
 	NumEntries uint64
 	Table      [256]MIB_IF_ROW2
 }
 
-//nolint:revive
 const (
 	IF_MAX_STRING_SIZE         uint64 = 256
 	IF_MAX_PHYS_ADDRESS_LENGTH uint64 = 32
 )
 
-//nolint:revive
 type MIB_IF_ROW2 struct {
 	InterfaceLuid            uint64
 	InterfaceIndex           uint32
@@ -89,27 +87,25 @@ type MIB_IF_ROW2 struct {
 	OutQLen            uint64
 }
 
-//nolint:revive, unused
+//nolint:unused
 type WLAN_INTERFACE_INFO_LIST struct {
 	dwNumberOfItems uint32
 	dwIndex         uint32
 	InterfaceInfo   [1]WLAN_INTERFACE_INFO
 }
 
-//nolint:revive
 type WLAN_INTERFACE_INFO struct {
 	InterfaceGuid           syscall.GUID
 	strInterfaceDescription [256]uint16
 	isState                 uint32
 }
 
-//nolint:revive
 const (
 	WLAN_MAX_NAME_LENGTH  int64 = 256
 	DOT11_SSID_MAX_LENGTH int64 = 32
 )
 
-//nolint:revive, unused
+//nolint:unused
 type WLAN_CONNECTION_ATTRIBUTES struct {
 	isState                   uint32
 	wlanConnectionMode        uint32
@@ -118,7 +114,7 @@ type WLAN_CONNECTION_ATTRIBUTES struct {
 	wlanSecurityAttributes    WLAN_SECURITY_ATTRIBUTES
 }
 
-//nolint:revive, unused
+//nolint:unused
 type WLAN_ASSOCIATION_ATTRIBUTES struct {
 	dot11Ssid         DOT11_SSID
 	dot11BssType      uint32
@@ -130,7 +126,7 @@ type WLAN_ASSOCIATION_ATTRIBUTES struct {
 	ulTxRate          uint32
 }
 
-//nolint:revive, unused
+//nolint:unused
 type WLAN_SECURITY_ATTRIBUTES struct {
 	bSecurityEnabled     uint32
 	bOneXEnabled         uint32
@@ -138,7 +134,6 @@ type WLAN_SECURITY_ATTRIBUTES struct {
 	dot11CipherAlgorithm uint32
 }
 
-//nolint:revive
 type DOT11_SSID struct {
 	uSSIDLength uint32
 	ucSSID      [DOT11_SSID_MAX_LENGTH]uint8
@@ -176,11 +171,11 @@ func (term *Terminal) getConnections() []*Connection {
 		}
 
 		// skip connections which aren't relevant
-		if len(connectionType) == 0 {
+		if connectionType == "" {
 			continue
 		}
 
-		term.DebugF("Found network interface: %s", alias)
+		log.Debugf("Found network interface: %s", alias)
 
 		network := &Connection{
 			Type:         connectionType,
@@ -193,15 +188,19 @@ func (term *Terminal) getConnections() []*Connection {
 		networks = append(networks, network)
 	}
 
-	if wifi, err := term.wifiNetwork(); err == nil {
+	wifi, err := term.wifiNetwork()
+	if err == nil {
 		networks = append(networks, wifi)
+		return networks
 	}
+
+	log.Error(err)
 
 	return networks
 }
 
 func (term *Terminal) wifiNetwork() (*Connection, error) {
-	term.Trace(time.Now())
+	defer log.Trace(time.Now())
 	// Open handle
 	var pdwNegotiatedVersion uint32
 	var phClientHandle uint32
@@ -224,16 +223,17 @@ func (term *Terminal) wifiNetwork() (*Connection, error) {
 	// use first interface that is connected
 	numberOfInterfaces := int(interfaceList.dwNumberOfItems)
 	infoSize := unsafe.Sizeof(interfaceList.InterfaceInfo[0])
-	for i := 0; i < numberOfInterfaces; i++ {
-		network := (*WLAN_INTERFACE_INFO)(unsafe.Pointer(uintptr(unsafe.Pointer(&interfaceList.InterfaceInfo[0])) + uintptr(i)*infoSize))
+	for i := range numberOfInterfaces {
+		network := (*WLAN_INTERFACE_INFO)(unsafe.Add(unsafe.Pointer(&interfaceList.InterfaceInfo[0]), uintptr(i)*infoSize))
 		if network.isState != 1 {
+			log.Debug("Skipping non-connected wifi interface")
 			continue
 		}
 
 		return term.parseNetworkInterface(network, phClientHandle)
 	}
 
-	return nil, errors.New("Not connected")
+	return nil, errors.New("not connected")
 }
 
 func (term *Terminal) parseNetworkInterface(network *WLAN_INTERFACE_INFO, clientHandle uint32) (*Connection, error) {
@@ -252,7 +252,6 @@ func (term *Terminal) parseNetworkInterface(network *WLAN_INTERFACE_INFO, client
 		uintptr(unsafe.Pointer(&wlanAttr)),
 		uintptr(unsafe.Pointer(nil)))
 	if e != 0 {
-		term.Error(err)
 		return &info, err
 	}
 
@@ -261,7 +260,7 @@ func (term *Terminal) parseNetworkInterface(network *WLAN_INTERFACE_INFO, client
 	if ssid.uSSIDLength > 0 {
 		info.SSID = string(ssid.ucSSID[0:ssid.uSSIDLength])
 		info.Name = info.SSID
-		term.DebugF("Found wifi interface: %s", info.SSID)
+		log.Debugf("Found wifi interface: %s", info.SSID)
 	}
 
 	info.TransmitRate = uint64(wlanAttr.wlanAssociationAttributes.ulTxRate / 1024)

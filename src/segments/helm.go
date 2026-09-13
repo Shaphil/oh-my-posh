@@ -1,19 +1,13 @@
 package segments
 
-import (
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-)
-
 type Helm struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
 	Version string
 }
 
 func (h *Helm) Enabled() bool {
-	displayMode := h.props.GetString(DisplayMode, DisplayModeAlways)
+	displayMode := h.options.String(DisplayMode, DisplayModeAlways)
 	if displayMode != DisplayModeFiles {
 		return h.getVersion()
 	}
@@ -32,11 +26,6 @@ func (h *Helm) Enabled() bool {
 
 func (h *Helm) Template() string {
 	return " Helm {{.Version}}"
-}
-
-func (h *Helm) Init(props properties.Properties, env runtime.Environment) {
-	h.props = props
-	h.env = env
 }
 
 func (h *Helm) getVersion() bool {

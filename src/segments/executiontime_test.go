@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -14,46 +14,46 @@ import (
 func TestExecutionTimeWriterDefaultThresholdEnabled(t *testing.T) {
 	env := new(mock.Environment)
 	env.On("ExecutionTime").Return(1337)
-	executionTime := &Executiontime{
-		env:   env,
-		props: properties.Map{},
-	}
+
+	executionTime := &Executiontime{}
+	executionTime.Init(options.Map{}, env)
+
 	assert.True(t, executionTime.Enabled())
 }
 
 func TestExecutionTimeWriterDefaultThresholdDisabled(t *testing.T) {
 	env := new(mock.Environment)
 	env.On("ExecutionTime").Return(1)
-	executionTime := &Executiontime{
-		env:   env,
-		props: properties.Map{},
-	}
+
+	executionTime := &Executiontime{}
+	executionTime.Init(options.Map{}, env)
+
 	assert.False(t, executionTime.Enabled())
 }
 
 func TestExecutionTimeWriterCustomThresholdEnabled(t *testing.T) {
 	env := new(mock.Environment)
 	env.On("ExecutionTime").Return(99)
-	props := properties.Map{
+	props := options.Map{
 		ThresholdProperty: float64(10),
 	}
-	executionTime := &Executiontime{
-		env:   env,
-		props: props,
-	}
+
+	executionTime := &Executiontime{}
+	executionTime.Init(props, env)
+
 	assert.True(t, executionTime.Enabled())
 }
 
 func TestExecutionTimeWriterCustomThresholdDisabled(t *testing.T) {
 	env := new(mock.Environment)
 	env.On("ExecutionTime").Return(99)
-	props := properties.Map{
+	props := options.Map{
 		ThresholdProperty: float64(100),
 	}
-	executionTime := &Executiontime{
-		env:   env,
-		props: props,
-	}
+
+	executionTime := &Executiontime{}
+	executionTime.Init(props, env)
+
 	assert.False(t, executionTime.Enabled())
 }
 
@@ -62,10 +62,10 @@ func TestExecutionTimeWriterDuration(t *testing.T) {
 	expected := "1.337s"
 	env := new(mock.Environment)
 	env.On("ExecutionTime").Return(input)
-	executionTime := &Executiontime{
-		env:   env,
-		props: properties.Map{},
-	}
+
+	executionTime := &Executiontime{}
+	executionTime.Init(options.Map{}, env)
+
 	executionTime.Enabled()
 	assert.Equal(t, expected, executionTime.FormattedMs)
 }
@@ -75,10 +75,10 @@ func TestExecutionTimeWriterDuration2(t *testing.T) {
 	expected := "3h 42m 51.337s"
 	env := new(mock.Environment)
 	env.On("ExecutionTime").Return(input)
-	executionTime := &Executiontime{
-		env:   env,
-		props: properties.Map{},
-	}
+
+	executionTime := &Executiontime{}
+	executionTime.Init(options.Map{}, env)
+
 	executionTime.Enabled()
 	assert.Equal(t, expected, executionTime.FormattedMs)
 }
@@ -360,5 +360,81 @@ func TestExecutionTimeFormatDurationLucky7(t *testing.T) {
 
 		// Lucky 7!!
 		assert.Equal(t, len(executionTime), 7)
+	}
+}
+
+func TestExecutionTimeFormatISO8601(t *testing.T) {
+	cases := []struct {
+		Input    string
+		Expected string
+	}{
+		{Input: "0.001s", Expected: "PT0S"},
+		{Input: "0.1s", Expected: "PT0S"},
+		{Input: "0.5s", Expected: "PT1S"},
+		{Input: "1s", Expected: "PT1S"},
+		{Input: "2.1s", Expected: "PT2S"},
+		{Input: "2.6s", Expected: "PT3S"},
+		{Input: "1m", Expected: "PT1M"},
+		{Input: "3m2.1s", Expected: "PT3M2S"},
+		{Input: "3m2.6s", Expected: "PT3M3S"},
+		{Input: "1h", Expected: "PT1H"},
+		{Input: "4h3m2.1s", Expected: "PT4H3M2S"},
+		{Input: "124h3m2.1s", Expected: "PT124H3M2S"},
+		{Input: "124h3m2.0s", Expected: "PT124H3M2S"},
+	}
+
+	for _, tc := range cases {
+		duration, _ := time.ParseDuration(tc.Input)
+		executionTime := &Executiontime{}
+		executionTime.Ms = duration.Milliseconds()
+		output := executionTime.formatDurationISO8601()
+		assert.Equal(t, tc.Expected, output, "Input: %s", tc.Input)
+	}
+}
+
+func TestExecutionTimeFormatISO8601Ms(t *testing.T) {
+	cases := []struct {
+		Input    string
+		Expected string
+	}{
+		{Input: "0.001s", Expected: "PT0.001S"},
+		{Input: "0.1s", Expected: "PT0.1S"},
+		{Input: "1s", Expected: "PT1S"},
+		{Input: "2.1s", Expected: "PT2.1S"},
+		{Input: "2.123s", Expected: "PT2.123S"},
+		{Input: "1m", Expected: "PT1M"},
+		{Input: "3m2.1s", Expected: "PT3M2.1S"},
+		{Input: "3m2.123s", Expected: "PT3M2.123S"},
+		{Input: "1h", Expected: "PT1H"},
+		{Input: "4h3m2.1s", Expected: "PT4H3M2.1S"},
+		{Input: "124h3m2.123s", Expected: "PT124H3M2.123S"},
+	}
+
+	for _, tc := range cases {
+		duration, _ := time.ParseDuration(tc.Input)
+		executionTime := &Executiontime{}
+		executionTime.Ms = duration.Milliseconds()
+		output := executionTime.formatDurationISO8601Ms()
+		assert.Equal(t, tc.Expected, output, "Input: %s", tc.Input)
+	}
+}
+
+func TestGroupThousands(t *testing.T) {
+	cases := map[int64]string{
+		0:          "0",
+		1:          "1",
+		999:        "999",
+		1000:       "1,000",
+		12345:      "12,345",
+		123456:     "123,456",
+		1234567:    "1,234,567",
+		1000000000: "1,000,000,000",
+		-999:       "-999",
+		-1000:      "-1,000",
+		-1234567:   "-1,234,567",
+	}
+
+	for input, expected := range cases {
+		assert.Equal(t, expected, groupThousands(input))
 	}
 }

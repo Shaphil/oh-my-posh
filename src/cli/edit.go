@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,26 +10,28 @@ import (
 
 func editFileWithEditor(file string) int {
 	editor := strings.TrimSpace(os.Getenv("EDITOR"))
-	if len(editor) == 0 {
+	if editor == "" {
 		fmt.Println(`no editor specified in the environment variable "EDITOR"`)
 		return 1
 	}
 
-	var args []string
-	if strings.Contains(editor, " ") {
-		strs := strings.Split(editor, " ")
-		editor = strs[0]
-		args = strs[1:]
-	}
+	editor = strings.TrimSpace(editor)
+	args := strings.Split(editor, " ")
+	editor = args[0]
+	args = append(args[1:], file)
 
-	args = append(args, file)
-	cmd := exec.Command(editor, args...)
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, editor, args...)
 
-	err := cmd.Run()
-	if err != nil {
+	cmd.Stdin = os.Stdin
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
 		fmt.Println(err.Error())
 		return 1
 	}
 
-	return cmd.ProcessState.ExitCode()
+	return 0
 }

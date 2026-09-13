@@ -2,10 +2,10 @@
 ---@diagnostic disable: undefined-field
 ---@diagnostic disable: lowercase-global
 
--- Cache PID
-os.setenv('POSH_SESSION_ID', '::SESSION_ID::')
+os.setenv('POSH_SHELL', 'cmd')
 
--- Helper functions
+os.setenv('VIRTUAL_ENV_DISABLE_PROMPT', '1')
+os.setenv('PYENV_VIRTUALENV_DISABLE_PROMPT', '1')
 
 local function get_priority_number(name, default)
     local value = os.getenv(name)
@@ -19,19 +19,16 @@ local function get_priority_number(name, default)
     return default
 end
 
--- Environment variables
-
 local function environment_onbeginedit()
 
 end
-
--- Local state
 
 local endedit_time = 0
 local last_duration = 0
 local rprompt_enabled = false
 local transient_enabled = false
 local ftcs_marks_enabled = false
+local serve_enabled = false
 local no_exit_code = true
 
 local cached_prompt = {}
@@ -47,28 +44,19 @@ local function cache_onbeginedit()
     local cwd = os.getcwd()
     local old_cache = cached_prompt
 
-    -- Start a new table for the new edit/prompt session.
     cached_prompt = { cwd = cwd }
 
-    -- Copy the cached left/right prompt strings if the cwd hasn't changed.
-    -- IMPORTANT OPTIMIZATION:  This keeps the prompt highly responsive, except
-    -- when changing the current working directory.
+    -- IMPORTANT OPTIMIZATION: reusing the cached left/right prompt when the cwd
+    -- hasn't changed is what keeps the prompt highly responsive.
     if old_cache.cwd == cwd then
         cached_prompt.left = old_cache.left
         cached_prompt.right = old_cache.right
     end
 end
 
--- Executable
-
 local omp_executable = '::OMP::'
 
--- Configuration
-
-os.setenv('POSH_THEME', '::CONFIG::')
 os.setenv('POSH_SHELL_VERSION', string.format('clink v%s.%s.%s.%s', clink.version_major, clink.version_minor, clink.version_patch, clink.version_commit))
-
--- Execution helpers
 
 local function can_async()
     if (clink.version_encoded or 0) >= 10030001 then
@@ -79,13 +67,32 @@ end
 local function run_posh_command(command)
     command = string.format('""%s" %s"', omp_executable, command)
     local _, is_main = coroutine.running()
+    local f, msg
     if is_main then
-        return io.popen(command):read('*a')
+        f, msg = io.popen(command)
+    else
+        f, msg = io.popenyield(command)
     end
-    return io.popenyield(command):read('*a')
+    local output = ''
+    if f then
+        output = f:read('*a')
+        f:close()
+    else
+        if msg and msg:sub(1, #command) == command then
+            msg = msg:sub(#command + 1)
+            msg = msg:gsub('^: +', '')
+            if msg == '' then
+                msg = nil
+            end
+        end
+        local cwd = os.getcwd()
+        cwd = cwd and (' in ' .. cwd) or ''
+        msg = msg and (' (' .. msg .. ')') or ''
+        log.info(string.format('Unable to run oh-my-posh%s%s.', msg, cwd))
+        log.info(command)
+    end
+    return output
 end
-
--- Duration functions
 
 local function os_clock_millis()
     -- Clink v1.2.30 has a fix for Lua's os.clock() implementation failing after
@@ -100,10 +107,12 @@ end
 local function duration_onbeginedit()
     last_duration = 0
     if endedit_time ~= 0 then
-        local beginedit_time = os_clock_millis()
-        local elapsed = beginedit_time - endedit_time
-        if elapsed >= 0 then
-            last_duration = elapsed
+        local beginedit_time = tonumber(os_clock_millis())
+        if beginedit_time then
+            local elapsed = beginedit_time - endedit_time
+            if elapsed >= 0 then
+                last_duration = elapsed
+            end
         end
     end
 end
@@ -112,11 +121,208 @@ local function duration_onendedit(input)
     endedit_time = 0
     -- For an empty command, the execution time should not be evaluated.
     if string.gsub(input, '^%s*(.-)%s*$', '%1') ~= '' then
-        endedit_time = os_clock_millis()
+        local m = tonumber(os_clock_millis())
+        if m then
+            endedit_time = m
+        end
     end
 end
 
--- Prompt functions
+-- Serve daemon
+--
+-- A persistent `oh-my-posh serve` process renders prompts on request over a
+-- bidirectional pipe (io.popenrw, Clink v1.1.42+), replacing a process spawn
+-- per prompt with an in-memory render. Requests use the protocol's "wait"
+-- mode: the daemon replies with exactly two NUL-delimited records - the fully
+-- resolved primary prompt and the transient prompt - so the blocking reads
+-- below always terminate (the daemon guarantees both records even when a
+-- render fails). Clink's Lua has no non-blocking pipe reads, but the risk
+-- profile matches the legacy path: io.popen blocks the same way.
+
+local serve = {
+    r = nil, -- daemon stdout (records)
+    w = nil, -- daemon stdin (requests)
+    cycle = 0, -- request id, used to discard records from earlier cycles
+    failures = 0, -- daemon failures; at 3 serve is disabled for the session
+    transient = nil, -- transient prompt cached from the last render's reply
+}
+
+local function serve_supported()
+    return serve_enabled and io.popenrw ~= nil and serve.failures < 3
+end
+
+local function serve_stop()
+    if serve.w then
+        serve.w:close()
+    end
+    if serve.r then
+        serve.r:close()
+    end
+    serve.w = nil
+    serve.r = nil
+end
+
+local function serve_start()
+    -- io.popenrw runs the command via %COMSPEC% /c and the child inherits the
+    -- console's stderr, so 2>nul is required: a Go panic must never print
+    -- into the terminal. Binary mode keeps records out of text-mode
+    -- translation.
+    local r, w = io.popenrw(string.format('""%s" serve --shell=cmd 2>nul"', omp_executable), 'b')
+    if not r then
+        return false
+    end
+
+    serve.r = r
+    serve.w = w
+    return true
+end
+
+local function json_escape(str)
+    str = str:gsub('[\\"]', '\\%0')
+    str = str:gsub('\r', '\\r'):gsub('\n', '\\n'):gsub('\t', '\\t')
+    -- strip any remaining control characters, JSON forbids them raw
+    return (str:gsub('%c', ''))
+end
+
+-- Returns the full exported environment as "KEY=VALUE\0" records, terminated
+-- by one extra bare NUL (an empty record) - see readEnvBlob on the daemon
+-- side. No escaping is needed: env values can never contain a NUL byte on
+-- any OS, and os.getenv already returns each variable's real, single-string
+-- value.
+local function serve_env_raw()
+    local parts = {}
+
+    local function add(name, value)
+        if value then
+            parts[#parts + 1] = name .. '=' .. value .. '\0'
+        end
+    end
+
+    if os.getenvnames then
+        for _, name in ipairs(os.getenvnames()) do
+            add(name, os.getenv(name))
+        end
+    else
+        -- Older Clink without os.getenvnames can't enumerate the
+        -- environment; fall back to the variables oh-my-posh itself depends
+        -- on rather than sending nothing.
+        add('PATH', os.getenv('PATH'))
+        add('VIRTUAL_ENV', os.getenv('VIRTUAL_ENV'))
+        add('CONDA_PROMPT_MODIFIER', os.getenv('CONDA_PROMPT_MODIFIER'))
+    end
+
+    parts[#parts + 1] = '\0' -- empty record: terminates the blob
+
+    return table.concat(parts)
+end
+
+local function serve_write_request()
+    serve.cycle = serve.cycle + 1
+    serve.transient = nil
+
+    -- Forwarded to the daemon through the full env blob below.
+    os.setenv('POSH_CURSOR_LINE', console.getnumlines())
+
+    local status = 0
+    if os.geterrorlevel ~= nil and settings.get('cmd.get_errorlevel') then
+        status = os.geterrorlevel()
+    end
+
+    local request = string.format(
+        '{"command":"render","id":%d,"shell":"cmd","status":%d,"no-status":%s,"execution-time":%d,"pwd":"%s","terminal-width":%d,"wait":true}\n',
+        serve.cycle,
+        status,
+        no_exit_code and 'true' or 'false',
+        last_duration or 0,
+        json_escape(os.getcwd() or ''),
+        console.getwidth() or 0
+    )
+
+    -- The full environment follows the header, unconditionally - see
+    -- serve_env_raw. Both writes go through the same pipe from the same
+    -- sequential writer, so they can never interleave with another request.
+    return (pcall(function()
+        assert(serve.w:write(request))
+        assert(serve.w:write(serve_env_raw()))
+        serve.w:flush()
+    end))
+end
+
+local function serve_read_record()
+    local ok, record = pcall(function()
+        local bytes = {}
+        while true do
+            local b = serve.r:read(1)
+            if b == nil then
+                return nil -- EOF: the daemon died
+            end
+            if b == '\0' then
+                return table.concat(bytes)
+            end
+            bytes[#bytes + 1] = b
+        end
+    end)
+
+    if not ok then
+        return nil
+    end
+    return record
+end
+
+-- Renders the primary prompt through the daemon. Returns nil on failure, in
+-- which case the caller falls back to the one-shot CLI for this prompt. The
+-- transient prompt arrives as the second record of the same reply and is
+-- cached for the transient filter.
+local function serve_render()
+    if not serve.r and not serve_start() then
+        serve.failures = serve.failures + 1
+        return nil
+    end
+
+    if not serve_write_request() then
+        -- The daemon died since the last prompt - restart it once.
+        serve_stop()
+        if not serve_start() or not serve_write_request() then
+            serve.failures = serve.failures + 1
+            serve_stop()
+            return nil
+        end
+    end
+
+    local id = tostring(serve.cycle)
+    local primary
+
+    -- A wait reply is exactly two records for this id: the primary prompt,
+    -- then the transient (payload prefixed with \30). The id check discards
+    -- leftovers from an earlier, partially read reply as a cheap defense;
+    -- a healthy session always consumes replies in full.
+    while true do
+        local record = serve_read_record()
+        if record == nil then
+            serve.failures = serve.failures + 1
+            serve_stop()
+            return nil
+        end
+
+        local sep = record:find('\31', 1, true)
+        if sep and record:sub(1, sep - 1) == id then
+            local payload = record:sub(sep + 1)
+            if payload:sub(1, 1) == '\30' then
+                serve.transient = payload:sub(2)
+                break -- the transient is the final record of a reply
+            end
+            primary = payload
+        end
+    end
+
+    if not primary or primary == '' then
+        -- An empty primary is the daemon's fallback signal (failed render).
+        serve.failures = serve.failures + 1
+        return nil
+    end
+
+    return primary
+end
 
 local function execution_time_option()
     if last_duration ~= nil then
@@ -156,11 +362,9 @@ end
 
 local function set_posh_tooltip(tip_command)
     if tip_command ~= '' and tip_command ~= cached_prompt.tip_command then
-        -- Escape special characters properly, if any.
         local escaped_tip_command = string.gsub(tip_command, '(\\+)"', '%1%1"'):gsub('(\\+)$', '%1%1'):gsub('"', '\\"'):gsub('([&<>%(%)@|%^])', '^%1'):gsub('%%', '%%%%')
         local command_option = string.format('--command "%s"', escaped_tip_command)
         local tooltip = get_posh_prompt('tooltip', command_option)
-        -- Do not cache an empty tooltip.
         if tooltip == '' then
             return
         end
@@ -170,17 +374,32 @@ local function set_posh_tooltip(tip_command)
 end
 
 local function display_cached_prompt()
-    -- Use what's already cached; avoid running oh-my-posh.
     cached_prompt.only_use_cache = true
     clink.refilterprompt()
     cached_prompt.only_use_cache = nil
 end
 
+local function url_encode(str)
+    -- percent-encode everything but RFC 3986 unreserved characters
+    return (string.gsub(str, '[^%w%-%._~]', function(ch)
+        return string.format('%%%02X', string.byte(ch))
+    end))
+end
+
 local function command_executed_mark(input)
     no_exit_code = string.gsub(input, '^%s*(.-)%s*$', '%1') == ''
-    if ftcs_marks_enabled then
-        clink.print('\x1b]133;C\007', NONL)
+
+    if not ftcs_marks_enabled then
+        return
     end
+
+    -- advertise the command line via kitty's cmdline_url= extension
+    local cmdline = ''
+    if input and input ~= '' then
+        cmdline = ';cmdline_url=' .. url_encode(input)
+    end
+
+    clink.print('\x1b]133;C' .. cmdline .. '\007', NONL)
 end
 
 -- set priority lower than z.lua
@@ -188,15 +407,38 @@ end
 local zl_prompt_priority = get_priority_number('_ZL_CLINK_PROMPT_PRIORITY', 0)
 local p = clink.promptfilter(zl_prompt_priority + 1)
 function p:filter(prompt)
+    -- Serve path: the daemon renders in-memory, so the left prompt is fetched
+    -- synchronously and always fresh - no stale cwd cache, no refresh
+    -- coroutine needed for it.
+    if serve_supported() and not cached_prompt.only_use_cache then
+        local left = serve_render()
+        if left then
+            cached_prompt.left = left
+
+            -- The right prompt still renders through the one-shot CLI,
+            -- asynchronously when possible.
+            if rprompt_enabled then
+                if can_async() then
+                    clink.promptcoroutine(function()
+                        cached_prompt.right = get_posh_prompt('right')
+                    end)
+                else
+                    cached_prompt.right = get_posh_prompt('right')
+                end
+            end
+
+            return cached_prompt.left
+        end
+        -- Serve failed; fall through to the one-shot path for this prompt.
+    end
+
     local need_left = true
 
-    -- Get a left prompt immediately if nothing is available yet.
     if not cached_prompt.left then
         cached_prompt.left = get_posh_prompt('primary')
         need_left = false
     end
 
-    -- Get left/right prompts asynchronously, if possible.
     if not cached_prompt.only_use_cache then
         if can_async() then
             -- IMPORTANT:  Defining this function inline makes sure it only
@@ -205,11 +447,9 @@ function p:filter(prompt)
             -- discards the old coroutine) and a new coroutine starts, the old
             -- coroutine won't stomp on the new cached_prompt table.
             clink.promptcoroutine(function()
-                -- Generate left prompt, if needed.
                 if need_left then
                     cached_prompt.left = get_posh_prompt('primary')
                 end
-                -- Generate right prompt, if needed.
                 if rprompt_enabled then
                     if need_left then
                         -- Show left side while right side is being generated.
@@ -230,13 +470,16 @@ function p:filter(prompt)
         end
     end
 
+    if cached_prompt.left == nil or cached_prompt.left == '' then
+        cached_prompt.left = string.format('Unable to get prompt text; see clink.log file for details.\n%s>', os.getcwd() or '')
+    end
+
     return cached_prompt.left
 end
 
 function p:rightfilter(prompt)
-    -- Return cached tooltip if available, otherwise return cached rprompt.
-    -- Returning false as the second return value halts further prompt
-    -- filtering, to keep other things from overriding what we generated.
+    -- Returning false as the second value halts further prompt filtering, so
+    -- other filters don't override what we generated.
     return (cached_prompt.tooltip or cached_prompt.right), false
 end
 
@@ -245,7 +488,13 @@ function p:transientfilter(prompt)
         return nil
     end
 
-    prompt = get_posh_prompt('transient')
+    if serve.transient and serve.transient ~= '' then
+        -- Rendered ahead of time by the daemon as part of the last reply -
+        -- saves a process spawn per accepted line.
+        prompt = serve.transient
+    else
+        prompt = get_posh_prompt('transient')
+    end
 
     if prompt == '' then
         prompt = nil
@@ -257,8 +506,6 @@ end
 function p:transientrightfilter(prompt)
     return '', false
 end
-
--- Event handlers
 
 local function builtin_modules_onbeginedit()
     cache_onbeginedit()
@@ -276,17 +523,12 @@ if clink.onbeginedit ~= nil and clink.onendedit ~= nil then
     clink.onendedit(builtin_modules_onendedit)
 end
 
--- Tooltips
-
 function _omp_space_keybinding(rl_buffer)
     -- Insert space first, in case it might affect the tip word, e.g. it could
     -- split "gitcommit" into "git commit".
     rl_buffer:insert(' ')
-    -- Get the first word of command line as tip.
     local tip_command = rl_buffer:getbuffer():gsub('^%s*(.-)%s*$', '%1')
 
-    -- Generate a tooltip asynchronously (via coroutine) if available, otherwise
-    -- generate a tooltip immediately.
     if not can_async() then
         set_posh_tooltip(tip_command)
         clink.refilterprompt()

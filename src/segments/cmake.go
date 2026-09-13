@@ -1,34 +1,38 @@
 package segments
 
-import (
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-)
-
 type Cmake struct {
-	language
+	Language
 }
 
 func (c *Cmake) Template() string {
 	return languageTemplate
 }
 
-func (c *Cmake) Init(props properties.Properties, env runtime.Environment) {
-	c.language = language{
-		env:        env,
-		props:      props,
-		extensions: []string{"*.cmake", "CMakeLists.txt"},
-		commands: []*cmd{
-			{
-				executable: "cmake",
-				args:       []string{"--version"},
-				regex:      `cmake version (?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+)))`,
-			},
-		},
-		versionURLTemplate: "https://cmake.org/cmake/help/v{{ .Major }}.{{ .Minor }}",
-	}
-}
+const cmakeToolName = "cmake"
 
 func (c *Cmake) Enabled() bool {
-	return c.language.Enabled()
+	c.loadSpec()
+
+	return c.Language.Enabled()
+}
+
+// Activation implements the activation gate; see Language.activation.
+func (c *Cmake) Activation() Activation {
+	c.loadSpec()
+
+	return c.activation()
+}
+
+func (c *Cmake) loadSpec() {
+	c.extensions = []string{"*.cmake", "CMakeLists.txt"}
+	c.tooling = map[string]*cmd{
+		cmakeToolName: {
+			executable:       cmakeToolName,
+			args:             []string{versionFlagArg},
+			regex:            `cmake version ` + versionRegex,
+			versionCacheable: true,
+		},
+	}
+	c.defaultTooling = []string{cmakeToolName}
+	c.versionURLTemplate = "https://cmake.org/cmake/help/v{{ .Major }}.{{ .Minor }}"
 }

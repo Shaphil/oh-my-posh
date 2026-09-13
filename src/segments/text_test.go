@@ -5,6 +5,8 @@ import (
 
 	"github.com/jandedobbeleer/oh-my-posh/src/cache"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -28,20 +30,20 @@ func TestTextSegment(t *testing.T) {
 	for _, tc := range cases {
 		env := new(mock.Environment)
 		env.On("PathSeparator").Return("/")
-		env.On("TemplateCache").Return(&cache.Template{
+		env.On("Getenv", "HELLO").Return("hello")
+		env.On("Getenv", "WORLD").Return("")
+
+		txt := &Text{}
+		txt.Init(options.Map{}, env)
+
+		template.Cache = &cache.Template{
 			UserName: "Posh",
-			Env: map[string]string{
-				"HELLO": "hello",
-				"WORLD": "",
-			},
 			HostName: "MyHost",
 			Shell:    "terminal",
 			Root:     true,
 			Folder:   "posh",
-		})
-		txt := &Text{
-			env: env,
 		}
+
 		assert.Equal(t, tc.ExpectedString, renderTemplate(env, tc.Template, txt), tc.Case)
 	}
 }

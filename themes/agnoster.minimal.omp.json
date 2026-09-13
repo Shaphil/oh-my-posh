@@ -25,7 +25,7 @@
         {
           "background": "#007ACC",
           "foreground": "#ffffff",
-          "properties": {
+          "options": {
             "folder_icon": "\u2026",
             "folder_separator_icon": " \ue0b1 ",
             "style": "agnoster_short",
@@ -38,10 +38,9 @@
         {
           "background": "#007ACC",
           "foreground": "#ffffff",
-          "properties": {
+          "options": {
             "cherry_pick_icon": "\u2713 ",
             "commit_icon": "\u25b7 ",
-            "fetch_status": true,
             "merge_icon": "\u25f4 ",
             "no_commits_icon": "[no commits]",
             "rebase_icon": "\u2c62 ",
@@ -61,5 +60,5 @@
       "type": "prompt"
     }
   ],
-  "version": 2
+  "version": 4
 }

@@ -8,16 +8,13 @@
         {
           "foreground": "#ffbebc",
           "leading_diamond": "<#ff70a6> \ue200 </>",
-          "properties": {
-            "display_host": true
-          },
           "style": "diamond",
           "template": "{{ .UserName }} <#ffffff>on</>",
           "type": "session"
         },
         {
           "foreground": "#bc93ff",
-          "properties": {
+          "options": {
             "time_format": "Monday <#ffffff>at</> 3:04 PM"
           },
           "style": "diamond",
@@ -26,12 +23,8 @@
         },
         {
           "foreground": "#ee79d1",
-          "properties": {
-            "branch_icon": "\ue725 ",
-            "fetch_stash_count": true,
-            "fetch_status": true,
-            "fetch_upstream_icon": true,
-            "fetch_worktree_count": true
+          "options": {
+            "branch_icon": "\ue725 "
           },
           "style": "diamond",
           "template": " {{ .UpstreamIcon }}{{ .HEAD }}{{if .BranchStatus }} {{ .BranchStatus }}{{ end }}{{ if .Working.Changed }} \uf044 {{ .Working.String }}{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Staging.Changed }} \uf046 {{ .Staging.String }}{{ end }}{{ if gt .StashCount 0 }} \ueb4b {{ .StashCount }}{{ end }} ",
@@ -46,11 +39,12 @@
         {
           "foreground": "#a9ffb4",
           "style": "plain",
+          "template": "  ",
           "type": "text"
         },
         {
           "foreground": "#a9ffb4",
-          "properties": {
+          "options": {
             "style": "dallas",
             "threshold": 0
           },
@@ -59,7 +53,7 @@
           "type": "executiontime"
         },
         {
-          "properties": {
+          "options": {
             "root_icon": "\uf292 "
           },
           "style": "diamond",
@@ -69,7 +63,7 @@
         {
           "foreground": "#94ffa2",
           "style": "diamond",
-          "template": " <#ffffff>MEM:</> {{ round .PhysicalPercentUsed .Precision }}% ({{ (div ((sub .PhysicalTotalMemory .PhysicalFreeMemory)|float64) 1073741824.0) }}/{{ (div .PhysicalTotalMemory 1073741824.0) }}GB)",
+          "template": " <#ffffff>MEM:</> {{ round .PhysicalPercentUsed .Precision }}% ({{ (div ((sub .PhysicalTotalMemory .PhysicalAvailableMemory)|float64) 1073741824.0) }}/{{ (div .PhysicalTotalMemory 1073741824.0) }}GB)",
           "type": "sysinfo"
         }
       ],
@@ -82,7 +76,7 @@
         {
           "foreground": "#ffafd2",
           "leading_diamond": "<#00c7fc> \ue285 </><#ffafd2>{</>",
-          "properties": {
+          "options": {
             "folder_icon": "\uf07b",
             "folder_separator_icon": " \uebcb ",
             "home_icon": "home",
@@ -96,7 +90,7 @@
         {
           "foreground": "#A9FFB4",
           "foreground_templates": ["{{ if gt .Code 0 }}#ef5350{{ end }}"],
-          "properties": {
+          "options": {
             "always_enabled": true
           },
           "style": "plain",
@@ -113,5 +107,5 @@
     "foreground": "#FEF5ED",
     "template": "\ue285 "
   },
-  "version": 2
+  "version": 4
 }

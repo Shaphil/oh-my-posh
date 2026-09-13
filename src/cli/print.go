@@ -3,10 +3,13 @@ package cli
 import (
 	"fmt"
 
+	"github.com/jandedobbeleer/oh-my-posh/src/cache"
 	"github.com/jandedobbeleer/oh-my-posh/src/prompt"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/shell"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 
-	"github.com/spf13/cobra"
+	"github.com/jandedobbeleer/oh-my-posh/src/cmdtree"
 )
 
 var (
@@ -19,7 +22,6 @@ var (
 	terminalWidth int
 	eval          bool
 	cleared       bool
-	cached        bool
 	jobCount      int
 	saveCache     bool
 
@@ -28,39 +30,47 @@ var (
 	plain        bool
 	noStatus     bool
 	column       int
+	escape       bool
+	interrupted  bool
 )
 
-// printCmd represents the prompt command
 var printCmd = createPrintCmd()
 
 func init() {
 	RootCmd.AddCommand(printCmd)
 }
 
-func createPrintCmd() *cobra.Command {
-	printCmd := &cobra.Command{
-		Use:   "print [debug|primary|secondary|transient|right|tooltip|valid|error]",
+func createPrintCmd() *cmdtree.Command {
+	printCmd := &cmdtree.Command{
+		Use:   "print [debug|primary|secondary|transient|transient-right|right|tooltip|valid|error|preview|cursor]",
 		Short: "Print the prompt/context",
 		Long:  "Print one of the prompts based on the location/use-case.",
 		ValidArgs: []string{
-			"debug",
-			"primary",
-			"secondary",
-			"transient",
-			"right",
-			"tooltip",
-			"valid",
-			"error",
+			prompt.DEBUG,
+			prompt.PRIMARY,
+			prompt.SECONDARY,
+			prompt.TRANSIENT,
+			prompt.TRANSIENT_RIGHT,
+			prompt.RIGHT,
+			prompt.TOOLTIP,
+			prompt.VALID,
+			prompt.ERROR,
+			prompt.PREVIEW,
+			prompt.CURSOR,
 		},
 		Args: NoArgsOrOneValidArg,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(cmd *cmdtree.Command, args []string) {
 			if len(args) == 0 {
 				_ = cmd.Help()
 				return
 			}
 
+			if shellName == "" {
+				shellName = shell.GENERIC
+			}
+
 			flags := &runtime.Flags{
-				Config:        configFlag,
+				ConfigPath:    configFlag,
 				PWD:           pwd,
 				PSWD:          pswd,
 				ErrorCode:     status,
@@ -72,34 +82,60 @@ func createPrintCmd() *cobra.Command {
 				Shell:         shellName,
 				ShellVersion:  shellVersion,
 				Plain:         plain,
-				Primary:       args[0] == "primary",
+				Type:          args[0],
 				Cleared:       cleared,
 				NoExitCode:    noStatus,
 				Column:        column,
 				JobCount:      jobCount,
-				SaveCache:     saveCache,
+				IsPrimary:     args[0] == prompt.PRIMARY,
+				Escape:        escape,
+				Force:         force,
+				Interrupted:   interrupted,
 			}
 
+			if err := applyDataFile(flags, cmd.Flags().Changed); err != nil {
+				exitcode = 666
+				fmt.Println(err.Error())
+				return
+			}
+
+			options := []cache.Option{}
+			if saveCache {
+				options = append(options, cache.Persist)
+			}
+
+			cache.Init(shellName, options...)
+
 			eng := prompt.New(flags)
-			defer eng.Env.Close()
+
+			defer func() {
+				template.SaveCache()
+				cache.Close()
+			}()
 
 			switch args[0] {
-			case "debug":
+			case prompt.DEBUG:
 				fmt.Print(eng.ExtraPrompt(prompt.Debug))
-			case "primary":
+			case prompt.PRIMARY:
 				fmt.Print(eng.Primary())
-			case "secondary":
+			case prompt.SECONDARY:
 				fmt.Print(eng.ExtraPrompt(prompt.Secondary))
-			case "transient":
+			case prompt.TRANSIENT:
 				fmt.Print(eng.ExtraPrompt(prompt.Transient))
-			case "right":
+			case prompt.TRANSIENT_RIGHT:
+				fmt.Print(eng.TransientRPrompt())
+			case prompt.RIGHT:
 				fmt.Print(eng.RPrompt())
-			case "tooltip":
+			case prompt.TOOLTIP:
 				fmt.Print(eng.Tooltip(command))
-			case "valid":
+			case prompt.VALID:
 				fmt.Print(eng.ExtraPrompt(prompt.Valid))
-			case "error":
+			case prompt.ERROR:
 				fmt.Print(eng.ExtraPrompt(prompt.Error))
+			case prompt.PREVIEW:
+				fmt.Print(eng.Preview())
+			case prompt.CURSOR:
+				fmt.Print(eng.CursorStyle())
 			default:
 				_ = cmd.Help()
 			}
@@ -117,22 +153,17 @@ func createPrintCmd() *cobra.Command {
 	printCmd.Flags().IntVarP(&stackCount, "stack-count", "s", 0, "number of locations on the stack")
 	printCmd.Flags().IntVarP(&terminalWidth, "terminal-width", "w", 0, "width of the terminal")
 	printCmd.Flags().StringVar(&command, "command", "", "tooltip command")
-	printCmd.Flags().BoolVarP(&plain, "plain", "p", false, "plain text output (no ANSI)")
 	printCmd.Flags().BoolVar(&cleared, "cleared", false, "do we have a clear terminal or not")
 	printCmd.Flags().BoolVar(&eval, "eval", false, "output the prompt for eval")
 	printCmd.Flags().IntVar(&column, "column", 0, "the column position of the cursor")
 	printCmd.Flags().IntVar(&jobCount, "job-count", 0, "number of background jobs")
 	printCmd.Flags().BoolVar(&saveCache, "save-cache", false, "save updated cache to file")
+	printCmd.Flags().BoolVar(&escape, "escape", true, "escape the ANSI sequences for the shell")
+	printCmd.Flags().BoolVarP(&force, "force", "f", false, "force rendering the segments")
+	printCmd.Flags().StringVar(&dataPath, "data", "", "path to a template data file (json/yaml/toml) to render with")
+	printCmd.Flags().BoolVar(&interrupted, "interrupted", false, "the command was interrupted")
 
-	// Deprecated flags, should be kept to avoid breaking CLI integration.
-	printCmd.Flags().IntVarP(&status, "error", "e", 0, "last exit code")
-	printCmd.Flags().BoolVar(&noStatus, "no-exit-code", false, "no valid exit code (cancelled or no command yet)")
-	printCmd.Flags().BoolVar(&cached, "cached", false, "use a cached prompt")
-
-	// Hide flags that are deprecated or for internal use only.
-	_ = printCmd.Flags().MarkHidden("error")
-	_ = printCmd.Flags().MarkHidden("no-exit-code")
-	_ = printCmd.Flags().MarkHidden("cached")
+	// Hide flags that are for internal use only.
 	_ = printCmd.Flags().MarkHidden("save-cache")
 
 	return printCmd

@@ -1,32 +1,26 @@
 package segments
 
 import (
-	"encoding/json"
-	"fmt"
 	"path/filepath"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 
-	"gopkg.in/yaml.v3"
+	yaml "go.yaml.in/yaml/v3"
 )
 
 // Whether to use kubectl or read kubeconfig ourselves
 const (
-	ParseKubeConfig properties.Property = "parse_kubeconfig"
-	ContextAliases  properties.Property = "context_aliases"
-	kubectlCacheKey                     = "kubectl"
+	ParseKubeConfig options.Option = "parse_kubeconfig"
+	ContextAliases  options.Option = "context_aliases"
+	ClusterAliases  options.Option = "cluster_aliases"
 )
 
 type Kubectl struct {
-	props properties.Properties
-	env   runtime.Environment
-
-	dirty bool
-
-	Context string
+	Base
 
 	KubeContext
+	Context string
+	dirty   bool
 }
 
 type KubeConfig struct {
@@ -47,50 +41,8 @@ func (k *Kubectl) Template() string {
 	return " {{ .Context }}{{ if .Namespace }} :: {{ .Namespace }}{{ end }} "
 }
 
-func (k *Kubectl) Init(props properties.Properties, env runtime.Environment) {
-	k.props = props
-	k.env = env
-}
-
-func (k *Kubectl) setCacheValue(timeout int) {
-	if !k.dirty {
-		return
-	}
-
-	cachedData, _ := json.Marshal(k)
-	k.env.Cache().Set(kubectlCacheKey, string(cachedData), timeout)
-}
-
-func (k *Kubectl) restoreCacheValue() error {
-	if val, found := k.env.Cache().Get(kubectlCacheKey); found {
-		err := json.Unmarshal([]byte(val), k)
-		if err != nil {
-			k.env.Error(err)
-			return err
-		}
-
-		return nil
-	}
-
-	return fmt.Errorf("no data in cache")
-}
-
 func (k *Kubectl) Enabled() bool {
-	cacheTimeout := k.props.GetInt(properties.CacheTimeout, 0)
-
-	if cacheTimeout > 0 {
-		if err := k.restoreCacheValue(); err == nil {
-			return true
-		}
-	}
-
-	defer func() {
-		if cacheTimeout > 0 {
-			k.setCacheValue(cacheTimeout)
-		}
-	}()
-
-	parseKubeConfig := k.props.GetBool(ParseKubeConfig, true)
+	parseKubeConfig := k.options.Bool(ParseKubeConfig, true)
 
 	if parseKubeConfig {
 		return k.doParseKubeConfig()
@@ -111,7 +63,7 @@ func (k *Kubectl) doParseKubeConfig() bool {
 	k.Context = ""
 
 	for _, kubeconfig := range kubeconfigs {
-		if len(kubeconfig) == 0 {
+		if kubeconfig == "" {
 			continue
 		}
 
@@ -129,7 +81,7 @@ func (k *Kubectl) doParseKubeConfig() bool {
 			}
 		}
 
-		if len(k.Context) == 0 {
+		if k.Context == "" {
 			k.Context = config.CurrentContext
 		}
 
@@ -143,12 +95,13 @@ func (k *Kubectl) doParseKubeConfig() bool {
 		}
 
 		k.SetContextAlias()
+		k.SetClusterAlias()
 		k.dirty = true
 
 		return true
 	}
 
-	displayError := k.props.GetBool(properties.DisplayError, false)
+	displayError := k.options.Bool(options.DisplayError, false)
 	if !displayError {
 		return false
 	}
@@ -163,7 +116,7 @@ func (k *Kubectl) doCallKubectl() bool {
 	}
 
 	result, err := k.env.RunCommand(cmd, "config", "view", "--output", "yaml", "--minify")
-	displayError := k.props.GetBool(properties.DisplayError, false)
+	displayError := k.options.Bool(options.DisplayError, false)
 	if err != nil && displayError {
 		k.setError("KUBECTL ERR")
 		return true
@@ -185,13 +138,14 @@ func (k *Kubectl) doCallKubectl() bool {
 
 	if len(config.Contexts) > 0 {
 		k.KubeContext = *config.Contexts[0].Context
+		k.SetClusterAlias()
 	}
 
 	return true
 }
 
 func (k *Kubectl) setError(message string) {
-	if len(k.Context) == 0 {
+	if k.Context == "" {
 		k.Context = message
 	}
 
@@ -201,8 +155,15 @@ func (k *Kubectl) setError(message string) {
 }
 
 func (k *Kubectl) SetContextAlias() {
-	aliases := k.props.GetKeyValueMap(ContextAliases, map[string]string{})
+	aliases := k.options.KeyValueMap(ContextAliases, map[string]string{})
 	if alias, exists := aliases[k.Context]; exists {
 		k.Context = alias
+	}
+}
+
+func (k *Kubectl) SetClusterAlias() {
+	aliases := k.options.KeyValueMap(ClusterAliases, map[string]string{})
+	if alias, exists := aliases[k.Cluster]; exists {
+		k.Cluster = alias
 	}
 }

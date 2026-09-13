@@ -6,15 +6,13 @@ import (
 	"path"
 	"strings"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-	"github.com/spf13/pflag"
-	"gopkg.in/yaml.v3"
+	"github.com/jandedobbeleer/oh-my-posh/src/cmdflag"
+	"github.com/jandedobbeleer/oh-my-posh/src/log"
+	yaml "go.yaml.in/yaml/v3"
 )
 
 const (
 	argocdOptsEnv     = "ARGOCD_OPTS"
-	argocdInvalidFlag = "invalid flag"
 	argocdInvalidYaml = "invalid yaml"
 	argocdNoCurrent   = "no current context"
 
@@ -28,13 +26,12 @@ type ArgocdContext struct {
 }
 
 type ArgocdConfig struct {
-	Contexts       []*ArgocdContext `yaml:"contexts"`
 	CurrentContext string           `yaml:"current-context"`
+	Contexts       []*ArgocdContext `yaml:"contexts"`
 }
 
 type Argocd struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
 	ArgocdContext
 }
@@ -43,17 +40,12 @@ func (a *Argocd) Template() string {
 	return NameTemplate
 }
 
-func (a *Argocd) Init(props properties.Properties, env runtime.Environment) {
-	a.props = props
-	a.env = env
-}
-
 func (a *Argocd) Enabled() bool {
 	// always parse config instead of using cli to save time
 	configPath := a.getConfigPath()
 	succeeded, err := a.parseConfig(configPath)
 	if err != nil {
-		a.env.Error(err)
+		log.Error(err)
 		return false
 	}
 	return succeeded
@@ -70,9 +62,9 @@ func (a *Argocd) getConfigPath() string {
 
 func (a *Argocd) getConfigFromOpts() string {
 	// don't exit/panic when encountering invalid flags
-	flags := pflag.NewFlagSet(os.Args[0], pflag.ContinueOnError)
+	flags := cmdflag.NewFlagSet(os.Args[0], cmdflag.ContinueOnError)
 	// ignore other valid and invalid flags
-	flags.ParseErrorsWhitelist.UnknownFlags = true
+	flags.ParseErrorsAllowlist.UnknownFlags = true
 	// only care about config
 	flags.String("config", "", "get config from opts")
 
@@ -84,21 +76,21 @@ func (a *Argocd) getConfigFromOpts() string {
 func (a *Argocd) parseConfig(file string) (bool, error) {
 	config := a.env.FileContent(file)
 	// missing or empty file content
-	if len(config) == 0 {
+	if config == "" {
 		return false, errors.New(argocdInvalidYaml)
 	}
 
 	var data ArgocdConfig
 	err := yaml.Unmarshal([]byte(config), &data)
 	if err != nil {
-		a.env.Error(err)
+		log.Error(err)
 		return false, errors.New(argocdInvalidYaml)
 	}
 	a.Name = data.CurrentContext
 	for _, context := range data.Contexts {
 		if context.Name == a.Name {
 			// mandatory fields in yaml
-			if len(context.Server) == 0 || len(context.User) == 0 {
+			if context.Server == "" || context.User == "" {
 				return false, errors.New(argocdInvalidYaml)
 			}
 			a.Server = context.Server

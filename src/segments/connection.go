@@ -3,19 +3,18 @@ package segments
 import (
 	"strings"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 )
 
 type Connection struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
 	runtime.Connection
 }
 
 const (
-	Type properties.Property = "type"
+	Type options.Option = "type"
 )
 
 func (c *Connection) Template() string {
@@ -23,9 +22,9 @@ func (c *Connection) Template() string {
 }
 
 func (c *Connection) Enabled() bool {
-	types := c.props.GetString(Type, "wifi|ethernet")
-	connectionTypes := strings.Split(types, "|")
-	for _, connectionType := range connectionTypes {
+	types := c.options.String(Type, "wifi|ethernet")
+	connectionTypes := strings.SplitSeq(types, "|")
+	for connectionType := range connectionTypes {
 		network, err := c.env.Connection(runtime.ConnectionType(connectionType))
 		if err != nil {
 			continue
@@ -34,9 +33,4 @@ func (c *Connection) Enabled() bool {
 		return true
 	}
 	return false
-}
-
-func (c *Connection) Init(props properties.Properties, env runtime.Environment) {
-	c.props = props
-	c.env = env
 }

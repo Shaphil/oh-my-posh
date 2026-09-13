@@ -1,31 +1,24 @@
 package segments
 
 import (
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 )
 
 type WindowsRegistry struct {
-	props properties.Properties
-	env   runtime.Environment
+	Base
 
 	Value string
 }
 
 const (
 	// full path to the key; if ends in \, gets "(Default)" key in that path
-	RegistryPath properties.Property = "path"
-	// Fallback is the text to display if the key is not found
-	Fallback properties.Property = "fallback"
+	RegistryPath options.Option = "path"
+	Fallback     options.Option = "fallback"
 )
 
 func (wr *WindowsRegistry) Template() string {
 	return " {{ .Value }} "
-}
-
-func (wr *WindowsRegistry) Init(props properties.Properties, env runtime.Environment) {
-	wr.props = props
-	wr.env = env
 }
 
 func (wr *WindowsRegistry) Enabled() bool {
@@ -33,8 +26,8 @@ func (wr *WindowsRegistry) Enabled() bool {
 		return false
 	}
 
-	registryPath := wr.props.GetString(RegistryPath, "")
-	wr.Value = wr.props.GetString(Fallback, "")
+	registryPath := wr.options.String(RegistryPath, "")
+	wr.Value = wr.options.String(Fallback, "")
 
 	regValue, err := wr.env.WindowsRegistryKeyValue(registryPath)
 	if err == nil {

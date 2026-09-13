@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jandedobbeleer/oh-my-posh/src/cache"
 	"github.com/jandedobbeleer/oh-my-posh/src/config"
 	"github.com/jandedobbeleer/oh-my-posh/src/log"
 )
@@ -20,15 +21,17 @@ func (e *Engine) PrintDebug(startTime time.Time, version string) string {
 
 	// console title timing
 	titleStartTime := time.Now()
-	e.Env.Debug("segment: Title")
-	title := e.getTitleTemplateText()
+	log.Debug("segment: Title")
 	consoleTitle := &config.Segment{
 		Alias:      "ConsoleTitle",
 		NameLength: 12,
 		Enabled:    len(e.Config.ConsoleTitleTemplate) > 0,
-		Text:       title,
 		Duration:   time.Since(titleStartTime),
+		Type:       config.TEXT,
 	}
+	_ = consoleTitle.MapSegmentWithWriter(e.Env)
+	consoleTitle.SetText(e.getTitleTemplateText())
+
 	largestSegmentNameLength := consoleTitle.NameLength
 
 	// render prompt
@@ -64,10 +67,10 @@ func (e *Engine) PrintDebug(startTime time.Time, version string) string {
 	}
 
 	e.write(fmt.Sprintf("\n%s %s\n", log.Text("Run duration:").Green().Bold().Plain(), time.Since(startTime)))
-	e.write(fmt.Sprintf("\n%s %s\n", log.Text("Cache path:").Green().Bold().Plain(), e.Env.CachePath()))
+	e.write(fmt.Sprintf("\n%s %s\n", log.Text("Cache path:").Green().Bold().Plain(), cache.Path()))
 
-	cfg := e.Env.Flags().Config
-	if len(cfg) == 0 {
+	cfg := e.Config.Source
+	if cfg == "" {
 		cfg = "no --config set, using default built-in configuration"
 	}
 

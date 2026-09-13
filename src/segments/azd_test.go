@@ -6,19 +6,18 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
 	"github.com/stretchr/testify/assert"
-	testify_ "github.com/stretchr/testify/mock"
 )
 
 func TestAzdSegment(t *testing.T) {
 	cases := []struct {
 		Case            string
-		ExpectedEnabled bool
 		ExpectedString  string
 		Template        string
+		ExpectedEnabled bool
 		IsInited        bool
 	}{
 		{
@@ -36,7 +35,6 @@ func TestAzdSegment(t *testing.T) {
 
 	for _, tc := range cases {
 		env := new(mock.Environment)
-		env.On("Debug", testify_.Anything)
 		env.On("Flags").Return(&runtime.Flags{})
 
 		if tc.IsInited {
@@ -62,10 +60,8 @@ func TestAzdSegment(t *testing.T) {
 			env.On("HasParentFilePath", ".azure", false).Return(&runtime.FileInfo{}, errors.New("no such file or directory"))
 		}
 
-		azd := Azd{
-			env:   env,
-			props: properties.Map{},
-		}
+		azd := Azd{}
+		azd.Init(options.Map{}, env)
 
 		assert.Equal(t, tc.ExpectedEnabled, azd.Enabled(), tc.Case)
 		assert.Equal(t, tc.ExpectedString, renderTemplate(env, tc.Template, azd), tc.Case)

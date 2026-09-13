@@ -4,8 +4,9 @@ import (
 	"testing"
 
 	"github.com/jandedobbeleer/oh-my-posh/src/cache"
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
 	"github.com/jandedobbeleer/oh-my-posh/src/runtime/mock"
+	"github.com/jandedobbeleer/oh-my-posh/src/segments/options"
+	"github.com/jandedobbeleer/oh-my-posh/src/template"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -15,10 +16,10 @@ func TestOSInfo(t *testing.T) {
 		Case              string
 		ExpectedString    string
 		GOOS              string
-		IsWSL             bool
 		Platform          string
-		DisplayDistroName bool
 		Icon              string
+		IsWSL             bool
+		DisplayDistroName bool
 	}{
 		{
 			Case:           "WSL debian - icon",
@@ -89,24 +90,22 @@ func TestOSInfo(t *testing.T) {
 		env := new(mock.Environment)
 		env.On("GOOS").Return(tc.GOOS)
 		env.On("Platform").Return(tc.Platform)
-		env.On("TemplateCache").Return(&cache.Template{
-			Env: make(map[string]string),
-			WSL: tc.IsWSL,
-		})
 
-		props := properties.Map{
+		props := options.Map{
 			DisplayDistroName: tc.DisplayDistroName,
 			Windows:           "windows",
 			MacOS:             "darwin",
 		}
 
 		if len(tc.Icon) != 0 {
-			props[properties.Property(tc.Platform)] = tc.Icon
+			props[options.Option(tc.Platform)] = tc.Icon
 		}
 
-		osInfo := &Os{
-			env:   env,
-			props: props,
+		osInfo := &Os{}
+		osInfo.Init(props, env)
+
+		template.Cache = &cache.Template{
+			WSL: tc.IsWSL,
 		}
 
 		_ = osInfo.Enabled()

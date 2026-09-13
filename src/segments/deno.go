@@ -1,34 +1,36 @@
 package segments
 
-import (
-	"github.com/jandedobbeleer/oh-my-posh/src/properties"
-	"github.com/jandedobbeleer/oh-my-posh/src/runtime"
-)
-
 type Deno struct {
-	language
+	Language
 }
 
 func (d *Deno) Template() string {
 	return languageTemplate
 }
 
-func (d *Deno) Init(props properties.Properties, env runtime.Environment) {
-	d.language = language{
-		env:        env,
-		props:      props,
-		extensions: []string{"*.js", "*.ts", "deno.json"},
-		commands: []*cmd{
-			{
-				executable: "deno",
-				args:       []string{"--version"},
-				regex:      `(?:(?P<version>((?P<major>[0-9]+).(?P<minor>[0-9]+).(?P<patch>[0-9]+))))`,
-			},
-		},
-		versionURLTemplate: "https://github.com/denoland/deno/releases/tag/v{{.Full}}",
-	}
+func (d *Deno) Enabled() bool {
+	d.loadSpec()
+
+	return d.Language.Enabled()
 }
 
-func (d *Deno) Enabled() bool {
-	return d.language.Enabled()
+// Activation implements the activation gate; see Language.activation.
+func (d *Deno) Activation() Activation {
+	d.loadSpec()
+
+	return d.activation()
+}
+
+func (d *Deno) loadSpec() {
+	d.extensions = []string{"*.js", "*.ts", "deno.json"}
+	d.tooling = map[string]*cmd{
+		denoToolName: {
+			executable:       denoToolName,
+			args:             []string{versionFlagArg},
+			regex:            versionRegexPrefixed,
+			versionCacheable: true,
+		},
+	}
+	d.defaultTooling = []string{denoToolName}
+	d.versionURLTemplate = "https://github.com/denoland/deno/releases/tag/v{{.Full}}"
 }
