@@ -7,6 +7,11 @@
         {
           "background": "#9130ff",
           "foreground": "#f2f3f8",
+          "style": "diamond",
+          "leading_diamond": "\ue0b6",
+          "trailing_diamond": "",
+          "template": " {{ .Icon }} ",
+          "type": "os",
           "options": {
             "alpine": "\uf300",
             "arch": "\uf303",
@@ -23,12 +28,7 @@
             "raspbian": "\uf315",
             "ubuntu": "\uf31c",
             "windows": "\ue70f"
-          },
-          "style": "diamond",
-          "leading_diamond": "\ue0b6",
-          "trailing_diamond": "\ue0b0",
-          "template": " {{ .Icon }} ",
-          "type": "os"
+          }
         },
         {
           "background": "#c386f1",
